@@ -130,6 +130,10 @@ void export_actor() {
       .def("disable_constant_velocity", &cc::Actor::DisableConstantVelocity)
       .def("enable_constant_acceleration", &cc::Actor::EnableConstantAcceleration, (arg("acceleration")))
       .def("disable_constant_acceleration", &cc::Actor::DisableConstantAcceleration)
+      .def("set_constant_acceleration_jerk_limit", &cc::Actor::SetConstantAccelerationJerkLimit,
+           (arg("jerk_limit_pos_mps3"), arg("jerk_limit_neg_mps3")))
+      .def("set_constant_acceleration_first_order_lag_tau", &cc::Actor::SetConstantAccelerationFirstOrderLagTau,
+           (arg("tau_s")))
       .def("add_impulse", &AddActorImpulse, (arg("impulse")))
       .def("add_impulse_at_location", &AddActorImpulseAtLocation, (arg("impulse"), arg("location")))
       .def("add_force", &AddActorForce, (arg("force")))
@@ -188,6 +192,8 @@ void export_actor() {
       no_init)
       .def("apply_control", &cc::Vehicle::ApplyControl, (arg("control")))
       .def("apply_ackermann_control", &cc::Vehicle::ApplyAckermannControl, (arg("control")))
+      .def("set_steer_rate_limit", &cc::Vehicle::SetSteerRateLimit, (arg("steer_rate_limit_1ps")))
+      .def("set_steer_first_order_lag_tau", &cc::Vehicle::SetSteerFirstOrderLagTau, (arg("tau_s")))
       .def("get_control", &cc::Vehicle::GetControl)
       .def("set_light_state", &cc::Vehicle::SetLightState, (arg("light_state")))
       .def("open_door", &cc::Vehicle::OpenDoor, (arg("door_idx")))

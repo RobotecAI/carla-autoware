@@ -318,7 +318,9 @@ namespace detail {
   void Client::ApplyPhysicsControlToVehicle(
       rpc::ActorId vehicle,
       const rpc::VehiclePhysicsControl &physics_control) {
-    return _pimpl->AsyncCall("apply_physics_control", vehicle, physics_control);
+    // Must be synchronous: scripts often call get_physics_control() immediately after apply;
+    // AsyncCall races the server and readback shows stale wheel data.
+    _pimpl->CallAndWait<void>("apply_physics_control", vehicle, physics_control);
   }
 
   void Client::SetLightStateToVehicle(
@@ -424,6 +426,19 @@ namespace detail {
     _pimpl->AsyncCall("disable_actor_constant_acceleration", actor);
   }
 
+  void Client::SetActorConstantAccelerationJerkLimit(
+      rpc::ActorId actor,
+      float jerk_limit_pos_mps3,
+      float jerk_limit_neg_mps3) {
+    _pimpl->CallAndWait<void>("set_actor_constant_acceleration_jerk_limit", actor, jerk_limit_pos_mps3, jerk_limit_neg_mps3);
+  }
+
+  void Client::SetActorConstantAccelerationFirstOrderLagTau(
+      rpc::ActorId actor,
+      float tau_s) {
+    _pimpl->CallAndWait<void>("set_actor_constant_acceleration_first_order_lag_tau", actor, tau_s);
+  }
+
   void Client::AddActorImpulse(rpc::ActorId actor, const geom::Vector3D &impulse) {
     _pimpl->AsyncCall("add_actor_impulse", actor, impulse);
   }
@@ -474,6 +489,14 @@ namespace detail {
 
   void Client::ApplyControlToVehicle(rpc::ActorId vehicle, const rpc::VehicleControl &control) {
     _pimpl->AsyncCall("apply_control_to_vehicle", vehicle, control);
+  }
+
+  void Client::SetVehicleSteerRateLimit(rpc::ActorId vehicle, float steer_rate_limit_1ps) {
+    _pimpl->CallAndWait<void>("set_vehicle_steer_rate_limit", vehicle, steer_rate_limit_1ps);
+  }
+
+  void Client::SetVehicleSteerFirstOrderLagTau(rpc::ActorId vehicle, float tau_s) {
+    _pimpl->CallAndWait<void>("set_vehicle_steer_first_order_lag_tau", vehicle, tau_s);
   }
 
   void Client::ApplyAckermannControlToVehicle(rpc::ActorId vehicle, const rpc::VehicleAckermannControl &control) {

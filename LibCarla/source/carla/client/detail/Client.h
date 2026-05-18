@@ -233,6 +233,15 @@ namespace detail {
     void DisableActorConstantAcceleration(
         rpc::ActorId actor);
 
+    void SetActorConstantAccelerationJerkLimit(
+        rpc::ActorId actor,
+        float jerk_limit_pos_mps3,
+        float jerk_limit_neg_mps3);
+
+    void SetActorConstantAccelerationFirstOrderLagTau(
+        rpc::ActorId actor,
+        float tau_s);
+
     void AddActorImpulse(
         rpc::ActorId actor,
         const geom::Vector3D &impulse);
@@ -285,6 +294,14 @@ namespace detail {
     void ApplyControlToVehicle(
         rpc::ActorId vehicle,
         const rpc::VehicleControl &control);
+
+    void SetVehicleSteerRateLimit(
+        rpc::ActorId vehicle,
+        float steer_rate_limit_1ps);
+
+    void SetVehicleSteerFirstOrderLagTau(
+        rpc::ActorId vehicle,
+        float tau_s);
 
     void ApplyAckermannControlToVehicle(
         rpc::ActorId vehicle,

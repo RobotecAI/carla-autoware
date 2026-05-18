@@ -244,6 +244,18 @@ public:
   UFUNCTION(Category = "CARLA Wheeled Vehicle", BlueprintCallable)
   void DeactivateAccelerationControl();
 
+  // Set jerk limits for Acceleration Control. Units: m/s^3. Use <= 0 to disable.
+  void SetAccelerationControlJerkLimit(float JerkLimitPosMps3, float JerkLimitNegMps3);
+
+  // Set first-order lag time constant for Acceleration Control target. Units: seconds. Use <= 0 to disable.
+  void SetAccelerationControlFirstOrderLagTau(float InTauS);
+
+  // Set steering rate limit (normalized steer in [-1, 1]). Units: 1/s. Use <= 0 to disable.
+  void SetSteerRateLimit(float InSteerRateLimit1ps) { SteerRateLimit1ps = InSteerRateLimit1ps; }
+
+  // Set first-order lag time constant for steering output. Units: seconds. Use <= 0 to disable.
+  void SetSteerFirstOrderLagTau(float InTauS) { SteerFirstOrderLagTauS = InTauS; }
+
   /// Apply control from Autoware /control/command/control_cmd (acceleration [m/s^2] + steering)
   void ApplyVehicleAccelerationControl(float LongitudinalAccelerationMps2, float Steer, float SteerSpeed);
 
@@ -252,6 +264,7 @@ public:
 
   /// @todo This function should be private to AWheeledVehicleAIController.
   void FlushVehicleControl();
+  void FlushVehicleControl(float DeltaTime);
 
   /// @}
   // ===========================================================================
@@ -352,6 +365,14 @@ private:
 
   UPROPERTY(Category = "CARLA Wheeled Vehicle", EditAnywhere)
   UVehicleAccelerationControl* AccelerationControl;
+
+  // Steering rate limit applied to VehicleControl.Steer (normalized [-1,1]).
+  // Units: 1/s. Use <= 0 to disable.
+  float SteerRateLimit1ps = 20.0f;
+  // First-order lag time constant applied to steering output. Units: seconds. Use <= 0 to disable.
+  float SteerFirstOrderLagTauS = 0.0f;
+  float LastSteerApplied = 0.0f;
+  float DesiredSteer = 0.0f;
 
 
   FVehicleControl LastAppliedControl;

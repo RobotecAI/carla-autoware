@@ -55,6 +55,12 @@ namespace client {
     /// Apply @a control to this vehicle.
     void ApplyAckermannControl(const AckermannControl &control);
 
+    /// Set steering rate limit (normalized steer in [-1,1]). Units: 1/s. Use <= 0 to disable.
+    void SetSteerRateLimit(float steer_rate_limit_1ps);
+
+    /// Set first-order lag time constant for steering output. Units: seconds. Use <= 0 to disable.
+    void SetSteerFirstOrderLagTau(float tau_s);
+
     /// Return the last Ackermann controller settings applied to this vehicle.
     ///
     /// @warning This function does call the simulator.

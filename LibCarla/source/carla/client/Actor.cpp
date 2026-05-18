@@ -74,6 +74,14 @@ namespace client {
     GetEpisode().Lock()->DisableActorConstantAcceleration(*this);
   }
 
+  void Actor::SetConstantAccelerationJerkLimit(float jerk_limit_pos_mps3, float jerk_limit_neg_mps3) {
+    GetEpisode().Lock()->SetActorConstantAccelerationJerkLimit(*this, jerk_limit_pos_mps3, jerk_limit_neg_mps3);
+  }
+
+  void Actor::SetConstantAccelerationFirstOrderLagTau(float tau_s) {
+    GetEpisode().Lock()->SetActorConstantAccelerationFirstOrderLagTau(*this, tau_s);
+  }
+
   void Actor::AddImpulse(const geom::Vector3D &impulse) {
     GetEpisode().Lock()->AddActorImpulse(*this, impulse);
   }

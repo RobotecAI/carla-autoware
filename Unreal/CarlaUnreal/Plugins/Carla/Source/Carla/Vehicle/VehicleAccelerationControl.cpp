@@ -35,7 +35,9 @@ void UVehicleAccelerationControl::Activate(bool bReset)
 {
   Super::Activate(bReset);
 
-  TargetAcceleration = FVector();
+  DesiredTargetAcceleration = FVector();
+  FilteredTargetAcceleration = FVector();
+  AppliedAcceleration = FVector();
   SetComponentTickEnabled(true);
 }
 
@@ -43,7 +45,9 @@ void UVehicleAccelerationControl::Activate(FVector Acceleration, bool bReset)
 {
   Super::Activate(bReset);
 
-  TargetAcceleration = Acceleration;
+  DesiredTargetAcceleration = Acceleration;
+  FilteredTargetAcceleration = Acceleration;
+  AppliedAcceleration = Acceleration;
   if (PrimitiveComponent != nullptr)
   {
     const FVector Vel = PrimitiveComponent->GetPhysicsLinearVelocity();
@@ -56,6 +60,19 @@ void UVehicleAccelerationControl::Activate(FVector Acceleration, bool bReset)
     ControlledForwardSpeed = 0.f;
   }
   SetComponentTickEnabled(true);
+}
+
+void UVehicleAccelerationControl::SetTargetAcceleration(const FVector& Acceleration)
+{
+  DesiredTargetAcceleration = Acceleration;
+  // Do not reset AppliedAcceleration or ControlledForwardSpeed here; jerk limiting
+  // will move AppliedAcceleration towards the (possibly filtered) target over time.
+}
+
+void UVehicleAccelerationControl::SetJerkLimit(float InJerkLimitPosCmps3, float InJerkLimitNegCmps3)
+{
+  JerkLimitPosCmps3 = InJerkLimitPosCmps3;
+  JerkLimitNegCmps3 = InJerkLimitNegCmps3;
 }
 
 void UVehicleAccelerationControl::Deactivate()
@@ -75,7 +92,37 @@ void UVehicleAccelerationControl::TickComponent(float DeltaTime, enum ELevelTick
 
   const FTransform Transf = OwnerVehicle->GetActorTransform();
   const FVector ForwardDir = Transf.TransformVectorNoScale(FVector(1, 0, 0)).GetSafeNormal();
-  const FVector WorldAcceleration = Transf.TransformVector(TargetAcceleration);
+
+  // First-order lag (exponential smoothing) on the target acceleration in vehicle-local space.
+  // alpha = 1 - exp(-dt/tau)
+  FVector TargetAcceleration = DesiredTargetAcceleration;
+  if (DeltaTime > 0.0f && TargetLagTauS > 0.0f)
+  {
+    const float Alpha = 1.0f - FMath::Exp(-DeltaTime / TargetLagTauS);
+    FilteredTargetAcceleration = FilteredTargetAcceleration + Alpha * (DesiredTargetAcceleration - FilteredTargetAcceleration);
+    TargetAcceleration = FilteredTargetAcceleration;
+  }
+  else
+  {
+    FilteredTargetAcceleration = DesiredTargetAcceleration;
+  }
+
+  // Apply jerk limits (rate limit on acceleration command) in vehicle-local space.
+  if (DeltaTime > 0.0f)
+  {
+    const FVector Diff = TargetAcceleration - AppliedAcceleration;
+    const float MaxInc = (JerkLimitPosCmps3 > 0.0f) ? (JerkLimitPosCmps3 * DeltaTime) : TNumericLimits<float>::Max();
+    const float MaxDec = (JerkLimitNegCmps3 > 0.0f) ? (JerkLimitNegCmps3 * DeltaTime) : TNumericLimits<float>::Max();
+    AppliedAcceleration.X += FMath::Clamp(Diff.X, -MaxDec, MaxInc);
+    AppliedAcceleration.Y += FMath::Clamp(Diff.Y, -MaxDec, MaxInc);
+    AppliedAcceleration.Z += FMath::Clamp(Diff.Z, -MaxDec, MaxInc);
+  }
+  else
+  {
+    AppliedAcceleration = TargetAcceleration;
+  }
+
+  const FVector WorldAcceleration = Transf.TransformVector(AppliedAcceleration);
   const float ForwardAccel = FVector::DotProduct(WorldAcceleration, ForwardDir);
 
   // Integrate only forward speed; preserve lateral velocity from physics so tires can generate cornering force

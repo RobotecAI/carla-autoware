@@ -438,6 +438,14 @@ namespace detail {
       _client.DisableActorConstantAcceleration(actor.GetId());
     }
 
+    void SetActorConstantAccelerationJerkLimit(const Actor &actor, float jerk_limit_pos_mps3, float jerk_limit_neg_mps3) {
+      _client.SetActorConstantAccelerationJerkLimit(actor.GetId(), jerk_limit_pos_mps3, jerk_limit_neg_mps3);
+    }
+
+    void SetActorConstantAccelerationFirstOrderLagTau(const Actor &actor, float tau_s) {
+      _client.SetActorConstantAccelerationFirstOrderLagTau(actor.GetId(), tau_s);
+    }
+
     void AddActorImpulse(const Actor &actor, const geom::Vector3D &impulse) {
       _client.AddActorImpulse(actor.GetId(), impulse);
     }
@@ -544,6 +552,14 @@ namespace detail {
 
     void ApplyControlToVehicle(Vehicle &vehicle, const rpc::VehicleControl &control) {
       _client.ApplyControlToVehicle(vehicle.GetId(), control);
+    }
+
+    void SetVehicleSteerRateLimit(Vehicle &vehicle, float steer_rate_limit_1ps) {
+      _client.SetVehicleSteerRateLimit(vehicle.GetId(), steer_rate_limit_1ps);
+    }
+
+    void SetVehicleSteerFirstOrderLagTau(Vehicle &vehicle, float tau_s) {
+      _client.SetVehicleSteerFirstOrderLagTau(vehicle.GetId(), tau_s);
     }
 
     void ApplyAckermannControlToVehicle(Vehicle &vehicle, const rpc::VehicleAckermannControl &control) {
