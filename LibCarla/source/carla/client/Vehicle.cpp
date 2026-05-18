@@ -59,6 +59,14 @@ namespace client {
     GetEpisode().Lock()->ApplyAckermannControlToVehicle(*this, control);
   }
 
+  void Vehicle::SetSteerRateLimit(float steer_rate_limit_1ps) {
+    GetEpisode().Lock()->SetVehicleSteerRateLimit(*this, steer_rate_limit_1ps);
+  }
+
+  void Vehicle::SetSteerFirstOrderLagTau(float tau_s) {
+    GetEpisode().Lock()->SetVehicleSteerFirstOrderLagTau(*this, tau_s);
+  }
+
   rpc::AckermannControllerSettings Vehicle::GetAckermannControllerSettings() const {
     return GetEpisode().Lock()->GetAckermannControllerSettings(*this);
   }
