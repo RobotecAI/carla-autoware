@@ -2,8 +2,9 @@
 
 """
 Vehicle controls:
-    W / ↑    : increase acceleration (max +2 m/s²)
-    S / ↓    : decrease acceleration (min -2 m/s², decelerate/reverse)
+    W / ↑    : accelerate (target +2 m/s² while held)
+    S / ↓    : decelerate (target -2 m/s² while held)
+    (release W/S or ↑/↓) : target acceleration 0
     A / ←    : steer left
     D / →    : steer right
     Space    : reset acceleration target to 0
@@ -70,8 +71,6 @@ except ImportError:
 # - constant_accel_jerk_limit_*_mps3:
 #     Jerk limits for AccelerationControl (constant acceleration) in [m/s^3].
 #     You can set different values for increasing vs decreasing acceleration.
-# - key_accel_change_rate_mps2ps:
-#     How fast the acceleration target changes with keyboard input [m/s^2 per second].
 # - key_accel_max/min_mps2:
 #     Upper/lower bounds for the acceleration target [m/s^2].
 # - key_steer_max:
@@ -99,7 +98,6 @@ TUNING = {
     "constant_accel_first_order_lag_tau_s": 0,
 
     # Keyboard input shaping (client-side)
-    "key_accel_change_rate_mps2ps": 6.0,
     "key_accel_max_mps2": 2.0,
     "key_accel_min_mps2": -2.0,
     "key_steer_max": 1.0,
@@ -109,7 +107,6 @@ TUNING = {
     "wheel_physics": {
         "front_friction_force_multiplier_mul": 1,
         "rear_friction_force_multiplier_mul": 1,
-        "all_wheels_cornering_stiffness_mul": 1,
     },
 }
 
@@ -768,22 +765,20 @@ class VehicleAccelerationControl(object):
         """Generate acceleration and steering commands from keyboard input."""
         MAX_ACCELERATION_MS2 = float(TUNING["key_accel_max_mps2"])  # [m/s^2]
         MIN_ACCELERATION_MS2 = float(TUNING["key_accel_min_mps2"])  # [m/s^2]
-        ACCELERATION_CHANGE_RATE = float(TUNING["key_accel_change_rate_mps2ps"])  # [m/s^2 per second]
         STEER_MAX = float(TUNING["key_steer_max"])  # normalized steer [-1, 1]
 
-        dt = max(0.0, milliseconds) / 1000.0
-
-        # Acceleration control (W/↑ accelerate, S/↓ decelerate)
-        if keys[K_UP] or keys[K_w]:
-            self._target_acceleration_ms2 += ACCELERATION_CHANGE_RATE * dt
-            self._target_acceleration_ms2 = min(MAX_ACCELERATION_MS2, self._target_acceleration_ms2)
+        # Acceleration control (instantaneous): up = +max, down = -max, none/both = 0
+        up = keys[K_UP] or keys[K_w]
+        down = keys[K_DOWN] or keys[K_s]
+        if up and not down:
+            self._target_acceleration_ms2 = MAX_ACCELERATION_MS2
             self._enable_acceleration_control()
-        elif keys[K_DOWN] or keys[K_s]:
-            self._target_acceleration_ms2 -= ACCELERATION_CHANGE_RATE * dt
-            self._target_acceleration_ms2 = max(MIN_ACCELERATION_MS2, self._target_acceleration_ms2)
+        elif down and not up:
+            self._target_acceleration_ms2 = MIN_ACCELERATION_MS2
             self._enable_acceleration_control()
         else:
-            pass
+            self._target_acceleration_ms2 = 0.0
+            self._enable_acceleration_control()
 
         # Steering control (instantaneous): left = -max, none = 0, right = +max
         left = keys[K_LEFT] or keys[K_a]
