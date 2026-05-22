@@ -222,6 +222,52 @@ Fixed upstream in this fork by setting `-DENABLE_SHM=OFF` in CycloneDDS's
 ExternalProject — CycloneDDS no longer picks up the system iceoryx built
 against libstdc++ while the UE toolchain uses libc++.
 
+### Editor crash on launch (Nanite / SkeletalMesh assertion)
+
+Symptom — editor process aborts shortly after `cmake --build Build --target launch`
+with a message similar to:
+
+```
+Assertion failed: ExternalEdgeOffset == ExternalEdges.Num()
+  [File:./Developer/NaniteBuilder/Private/ClusterDAG.cpp] [Line: 126]
+
+  Stack: Nanite::BuildDAG ← FSkeletalMeshBuilder::Build
+       ← USkeletalMesh::ExecutePostLoadInternal
+```
+
+Root cause — the project's `DerivedDataCache/` (DDC) holds Nanite / asset
+artefacts produced by a previous build whose internal layout no longer
+matches the current code. Common after an upstream sync, branch switch, or
+rebase that touches asset post-load paths. DDC is an internal cache: it
+does not invalidate itself when the surrounding CARLA/UE5 code changes.
+
+Recovery — wipe the project DDC and let UE5 rebuild it on next launch:
+
+```sh
+# 1. Kill any lingering editor / crash reporter
+pkill -9 -f UnrealEditor
+pkill -9 -f CrashReportClient
+
+# 2. Remove the project DDC (typically <100 MB on a cold build)
+rm -rf Unreal/CarlaUnreal/DerivedDataCache
+
+# 3. Relaunch — initial start is slow (~5–10 min) while DDC is rebuilt
+cmake --build Build --target launch
+```
+
+`RglSetup.sh build --package=launch` automates this: it tracks the last
+launch's git HEAD in `Build/.last-launch-head` and clears DDC when HEAD has
+moved. Suppress with `--no-clear-ddc` if you want to keep the warm cache
+across switches. Manually clear with the steps above when the heuristic
+misses (e.g. uncommitted local edits that change asset behaviour).
+
+If clearing the project DDC does not resolve the crash, also check:
+
+- Engine-shared DDC (rare): `~/Documents/Unreal Engine/Common/DerivedDataCache/`
+- Engine-internal DDC (rare): `UnrealEngine5_carla/Engine/DerivedDataCache/`
+
+Both are safe to delete; expect a longer rebuild.
+
 ## Windows
 
 **TBD** — `RglSetup.sh` is currently a Bash script and targets Linux
