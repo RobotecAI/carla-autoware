@@ -9,6 +9,7 @@
 #include "CoreMinimal.h"
 #include "Sensor/GnssSensor.h"
 #include "Autoware/Data/MgrsDataAsset.h"
+#include <carla/geom/GeoProjection.h>
 #include "AutowareGnssSensor.generated.h"
 
 UCLASS()
@@ -62,7 +63,7 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMgrsDataAsset> MgrsDataAsset = nullptr;
 	
-	carla::geom::GeoLocation CurrentGeoReference;
+	carla::geom::GeoProjection CurrentGeoProjection;
 
 	bool bApplyNoiseError = false;
 

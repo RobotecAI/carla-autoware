@@ -36,7 +36,7 @@ void AAutowareGnssSensor::BeginPlay()
 	LoadMgrsData();
 	
 	const UCarlaEpisode* episode = UCarlaStatics::GetCurrentEpisode(GetWorld());
-	CurrentGeoReference = episode->GetGeoReference(); // Can be directly set inside gnss sensor, but carla does it in game mode base and attaches it into episode
+	CurrentGeoProjection = episode->GetGeoProjection(); // Can be directly set inside gnss sensor, but carla does it in game mode base and attaches it into episode
 }
 
 void AAutowareGnssSensor::PostPhysTick(UWorld* World, ELevelTick TickType, float DeltaSeconds)
@@ -45,7 +45,7 @@ void AAutowareGnssSensor::PostPhysTick(UWorld* World, ELevelTick TickType, float
 
 	FVector ActorLocation = GetActorLocation();
 	carla::geom::Location Location = ActorLocation;
-	carla::geom::GeoLocation CurrentLocation = CurrentGeoReference.Transform(Location);
+	carla::geom::GeoLocation CurrentLocation = CurrentGeoProjection.TransformToGeoLocation(Location);
 	
 	LatitudeValue = CurrentLocation.latitude;
 	LongitudeValue = CurrentLocation.longitude;

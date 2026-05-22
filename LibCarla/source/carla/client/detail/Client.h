@@ -29,6 +29,7 @@
 #include "carla/rpc/VehicleLightStateList.h"
 #include "carla/rpc/VehicleLightState.h"
 #include "carla/rpc/VehiclePhysicsControl.h"
+#include "carla/rpc/VehicleTelemetryData.h"
 #include "carla/rpc/VehicleWheels.h"
 #include "carla/rpc/WeatherParameters.h"
 #include "carla/rpc/Texture.h"
@@ -161,6 +162,10 @@ namespace detail {
 
     bool IsWeatherEnabled();
 
+    float GetIMUSensorGravity();
+
+    void SetIMUSensorGravity(float gravity);
+
     void SetPublishTF(bool publish_tf);
 
     bool GetPublishTF() const;
@@ -170,6 +175,8 @@ namespace detail {
     std::vector<rpc::Actor> GetActorsById(const std::vector<ActorId> &ids);
 
     rpc::VehiclePhysicsControl GetVehiclePhysicsControl(rpc::ActorId vehicle) const;
+
+    rpc::VehicleTelemetryData GetVehicleTelemetryData(rpc::ActorId vehicle) const;
 
     rpc::VehicleLightState GetVehicleLightState(rpc::ActorId vehicle) const;
     
@@ -258,6 +265,35 @@ namespace detail {
     void AddActorTorque(
         rpc::ActorId actor,
         const geom::Vector3D &vector);
+
+    geom::Transform GetActorComponentWorldTransform(
+        rpc::ActorId actor,
+        const std::string &component_name);
+
+    geom::Transform GetActorComponentRelativeTransform(
+        rpc::ActorId actor,
+        const std::string &component_name);
+
+    std::vector<geom::Transform> GetActorBoneWorldTransforms(
+        rpc::ActorId actor);
+
+    std::vector<geom::Transform> GetActorBoneRelativeTransforms(
+        rpc::ActorId actor);
+
+    std::vector<std::string> GetActorComponentNames(
+        rpc::ActorId actor);
+
+    std::vector<std::string> GetActorBoneNames(
+        rpc::ActorId actor);
+
+    std::vector<geom::Transform> GetActorSocketWorldTransforms(
+        rpc::ActorId actor);
+
+    std::vector<geom::Transform> GetActorSocketRelativeTransforms(
+        rpc::ActorId actor);
+
+    std::vector<std::string> GetActorSocketNames(
+        rpc::ActorId actor);
 
     void SetActorSimulatePhysics(
         rpc::ActorId actor,
@@ -379,7 +415,7 @@ namespace detail {
     std::vector<ActorId> GetGroupTrafficLights(
         rpc::ActorId traffic_light);
 
-    std::string StartRecorder(std::string name, bool additional_data);
+    std::string StartRecorder(std::string name, bool additional_data, bool stop_replayer);
 
     void StopRecorder();
 
@@ -389,8 +425,10 @@ namespace detail {
 
     std::string ShowRecorderActorsBlocked(std::string name, double min_time, double min_distance);
 
-    std::string ReplayFile(std::string name, double start, double duration,
-        uint32_t follow_id, bool replay_sensors);
+    std::string ReplayFile(
+        std::string name, double start, double duration,
+        uint32_t follow_id, bool replay_sensors, bool replay_weather, const geom::Transform& offset,
+        std::string map_override);
 
     void SetReplayerTimeFactor(double time_factor);
 
@@ -422,6 +460,10 @@ namespace detail {
         uint32_t GBufferId);
 
     void DrawDebugShape(const rpc::DebugShape &shape);
+
+    void ClearDebugShape();
+
+    void ClearDebugString();
 
     void ApplyBatch(
         std::vector<rpc::Command> commands,

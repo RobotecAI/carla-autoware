@@ -117,7 +117,13 @@ public:
 
   [[deprecated("This command no longer makes sense since the apply_textures API relies on IDs.")]]
   TArray<FString> GetNamesOfAllActors();
-  
+
+  /// Gravitational acceleration used by IMU sensors.
+  /// Default is -9.81 m/s^2 for Autoware compatibility (T4 fork convention).
+  /// Upstream default is +9.81f; overridden here to preserve T4 IMU sign convention.
+  UPROPERTY(BlueprintReadOnly, EditAnywhere, Category="Sensor Gravity")
+  float IMUSensorGravity = -9.81f;
+
   FOnEpisodeInitialisedDelegate OnEpisodeInitialisedDelegate;
 
 protected:

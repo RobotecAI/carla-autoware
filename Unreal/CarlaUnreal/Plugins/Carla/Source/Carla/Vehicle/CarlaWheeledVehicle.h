@@ -14,6 +14,7 @@
 #include "Carla/Vehicle/VehicleLightState.h"
 #include "Carla/Vehicle/VehicleInputPriority.h"
 #include "Carla/Vehicle/VehiclePhysicsControl.h"
+#include "Carla/Vehicle/VehicleTelemetryData.h"
 #include "Carla/Vehicle/VehicleVelocityControl.h"
 #include "Carla/Vehicle/VehicleAccelerationControl.h"
 #include "Carla/Vehicle/WheeledVehicleMovementComponentNW.h"
@@ -177,6 +178,13 @@ public:
 
   UFUNCTION(Category = "CARLA Wheeled Vehicle", BlueprintCallable)
   FVehiclePhysicsControl GetVehiclePhysicsControl() const;
+
+  /// Returns a snapshot of the vehicle's runtime telemetry: forward speed,
+  /// last applied control inputs, engine RPM, current gear, and per-wheel
+  /// lateral slip, longitudinal slip, and angular velocity sourced from
+  /// the Chaos vehicle physics state.
+  UFUNCTION(Category = "CARLA Wheeled Vehicle", BlueprintCallable)
+  FVehicleTelemetryData GetVehicleTelemetryData() const;
 
   FVector GetCenterOfMass(UChaosWheeledVehicleMovementComponent &VehicleMovComponent) const;
 
@@ -348,7 +356,7 @@ private:
   ECarlaWheeledVehicleState State = ECarlaWheeledVehicleState::UNKNOWN;
 
   UPROPERTY(Category = "CARLA Wheeled Vehicle", EditAnywhere)
-  UVehicleVelocityControl* VelocityControl;
+  TObjectPtr<UVehicleVelocityControl> VelocityControl;
 
   UPROPERTY(Category = "CARLA Wheeled Vehicle", EditAnywhere)
   UVehicleAccelerationControl* AccelerationControl;
@@ -375,7 +383,7 @@ public:
   FBox FoliageBoundingBox;
 
   UPROPERTY(Category = "CARLA Wheeled Vehicle", EditAnywhere)
-  UBoxComponent *VehicleBounds;
+  TObjectPtr<UBoxComponent> VehicleBounds;
 
   UFUNCTION()
   FBox GetDetectionBox() const;

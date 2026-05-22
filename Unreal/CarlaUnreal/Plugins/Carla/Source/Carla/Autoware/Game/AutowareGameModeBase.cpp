@@ -8,6 +8,9 @@
 
 #include "AutowareWorldSettings.h"
 
+#include <carla/geom/GeoProjection.h>
+#include <carla/geom/GeoProjectionsParams.h>
+
 AAutowareGameModeBase::AAutowareGameModeBase(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer)
 {
@@ -36,13 +39,20 @@ void AAutowareGameModeBase::LoadGeoReference()
 		return;
 	}
 	
-	carla::geom::GeoLocation GeoReference
-	(
-		Data->GeoReference.Latitude,
-		Data->GeoReference.Longitude,
-		Data->GeoReference.Altitude
+	// Construct a Transverse Mercator projection centred on the MGRS reference
+	// point. This preserves the prior T4 behaviour of treating the configured
+	// lat/lon/alt as the origin for local UE-coordinates → geographic
+	// transformations (replaces the removed GeoLocation::Transform Mercator
+	// path; see upstream commit 8b3f3b207).
+	carla::geom::TransverseMercatorParams TmParams(
+		/* lat_0 */ Data->GeoReference.Latitude,
+		/* lon_0 */ Data->GeoReference.Longitude,
+		/* k     */ 1.0,
+		/* x_0   */ 0.0,
+		/* y_0   */ 0.0,
+		/* ellps */ carla::geom::Ellipsoid{6378137.0, 298.257223563} // WGS84
 	);
-	Episode->MapGeoReference = GeoReference;
+	Episode->MapGeoProjection = carla::geom::GeoProjection::Make(TmParams);
 
 	UE_LOG(LogCarla, Warning, TEXT("MGRS Offset loaded successfuly."));
 	StoreSpawnPoints();

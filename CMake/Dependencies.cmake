@@ -173,7 +173,7 @@ carla_dependency_option (BOOST_GIL_BUILD_HEADER_TESTS OFF)
 carla_dependency_add(
   boost
   ${CARLA_BOOST_TAG}
-  https://github.com/boostorg/boost/releases/download/${CARLA_BOOST_TAG}/${CARLA_BOOST_TAG}.zip
+  https://github.com/boostorg/boost/releases/download/${CARLA_BOOST_TAG}/${CARLA_BOOST_TAG}-cmake.zip
   https://github.com/boostorg/boost.git
 )
 
@@ -273,6 +273,18 @@ if (BUILD_CARLA_UNREAL AND ENABLE_STREETMAP)
     https://github.com/carla-simulator/StreetMap/archive/refs/heads/${CARLA_STREETMAP_TAG}.zip
     https://github.com/carla-simulator/StreetMap.git
     SOURCE_DIR ${CARLA_WORKSPACE_PATH}/Unreal/CarlaUnreal/Plugins/StreetMap
+  )
+endif ()
+
+if (BUILD_LIBCARLA_TESTS)
+  # ==== GOOGLETEST ====
+  carla_dependency_option (BUILD_GMOCK OFF)
+  carla_dependency_option (INSTALL_GTEST OFF)
+  carla_dependency_add (
+    googletest
+    ${CARLA_GTEST_TAG}
+    https://github.com/google/googletest/archive/refs/tags/${CARLA_GTEST_TAG}.zip
+    https://github.com/google/googletest.git
   )
 endif ()
 
