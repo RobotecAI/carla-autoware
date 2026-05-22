@@ -23,6 +23,8 @@
 #
 # Options for 'build':
 #   --package=TYPE            shipping, development, launch, none (default: none)
+#   --no-clear-ddc            Skip automatic DDC clear on launch (default: clear
+#                             when git HEAD has changed since last launch)
 
 set -e
 
@@ -33,7 +35,7 @@ workspace_path="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # ============================================================================
 
 usage() {
-    head -26 "$0" | tail -25
+    head -28 "$0" | tail -27
     exit 1
 }
 
@@ -133,6 +135,46 @@ verify_colcon_install_path() {
         echo "  expected:      $colcon_ws/install"
         echo "  Removing $colcon_ws/{build,install,log} to force rebuild..."
         rm -rf "$colcon_ws/build" "$colcon_ws/install" "$colcon_ws/log"
+    fi
+}
+
+# ============================================================================
+# Helper: verify_ddc_freshness
+# ----------------------------------------------------------------------------
+# UE5's DerivedDataCache (DDC) stores baked Nanite, shader, and asset data
+# keyed by content hash. After an upstream/CARLA sync the asset post-load path
+# can change without invalidating the existing DDC entries, leading to runtime
+# assertions inside engine code (e.g. Nanite::BuildDAG ExternalEdgeOffset).
+# Heuristic: track the git HEAD at last launch; wipe the project DDC if HEAD
+# moved since then. False-positives only cost one DDC rebuild on next launch.
+# Arguments:
+#   $1 = workspace path
+# Honours: --no-clear-ddc (suppresses the wipe via _no_clear_ddc=1)
+# ============================================================================
+
+verify_ddc_freshness() {
+    local ws="$1"
+    [ "${_no_clear_ddc:-0}" -eq 1 ] && return 0
+
+    local marker="$ws/Build/.last-launch-head"
+    local ddc="$ws/Unreal/CarlaUnreal/DerivedDataCache"
+    local current_head
+    current_head=$(git -C "$ws" rev-parse HEAD 2>/dev/null || echo "")
+    [ -z "$current_head" ] && return 0
+
+    local last_head=""
+    [ -f "$marker" ] && last_head=$(cat "$marker" 2>/dev/null)
+
+    if [ "$current_head" != "$last_head" ]; then
+        if [ -d "$ddc" ]; then
+            echo "[INFO] git HEAD changed since last launch attempt:"
+            echo "  previous: ${last_head:-(none)}"
+            echo "  current:  $current_head"
+            echo "  Clearing project DDC at $ddc to avoid stale Nanite/asset cache..."
+            rm -rf "$ddc"
+        fi
+        mkdir -p "$(dirname "$marker")"
+        echo "$current_head" > "$marker"
     fi
 }
 
@@ -382,10 +424,12 @@ cmd_prepare() {
 
 cmd_build() {
     local package_type="none"
+    local _no_clear_ddc=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --package=*) package_type="${1#*=}"; shift ;;
+            --no-clear-ddc) _no_clear_ddc=1; shift ;;
             *) echo "Unknown option for build: $1"; usage ;;
         esac
     done
@@ -454,6 +498,10 @@ cmd_build() {
             echo "[OK] Development package built."
             ;;
         launch)
+            # Auto-clear DDC when git HEAD moved since last launch attempt;
+            # avoids editor-side Nanite/asset assertions from stale cache.
+            # Suppress with --no-clear-ddc.
+            verify_ddc_freshness "$workspace_path"
             echo "Launching UE5 editor..."
             cmake --build Build --target launch
             ;;
