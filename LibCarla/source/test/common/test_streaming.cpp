@@ -15,6 +15,8 @@
 #include <carla/streaming/low_level/Client.h>
 #include <carla/streaming/low_level/Server.h>
 
+#include <boost/asio/executor_work_guard.hpp>
+
 #include <atomic>
 
 using namespace std::chrono_literals;
@@ -27,7 +29,7 @@ public:
   boost::asio::io_context service;
 
   explicit io_context_running(size_t threads = 2u)
-    : _work_to_do(service) {
+    : _work_to_do(boost::asio::make_work_guard(service)) {
     _threads.CreateThreads(threads, [this]() { service.run(); });
   }
 
@@ -37,7 +39,7 @@ public:
 
 private:
 
-  boost::asio::io_context::work _work_to_do;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> _work_to_do;
 
   carla::ThreadGroup _threads;
 };
@@ -231,8 +233,13 @@ TEST(streaming, stream_outlives_server) {
       std::this_thread::sleep_for(20ms);
     } // client dies here.
     ASSERT_GT(messages_received, 0u);
+    // Detach the sender from this iteration's stream before the server tears
+    // down. Otherwise the sender can call Session::Write on a session whose
+    // io_context is being stopped inside ~Server, which segfaults
+    // intermittently in Release builds on slow runners.
+    std::atomic_store_explicit(&stream, std::shared_ptr<Stream>(), std::memory_order_relaxed);
+    std::this_thread::sleep_for(20ms);
   } // server dies here.
-  std::this_thread::sleep_for(20ms);
   done = true;
 } // stream dies here.
 

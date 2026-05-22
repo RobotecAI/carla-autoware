@@ -67,6 +67,8 @@ sudo apt-get -y install \
     libgbm-dev \
     libpango1.0-dev \
     libasound2-dev \
+    libsdl2-dev \
+    libfreetype-dev \
     pigz \
     zstd
 
@@ -86,7 +88,14 @@ PIP_EXTRA_ARGS=""
 if dpkg --compare-versions "$UBUNTU_VERSION_ID" ge "24.04"; then
     PIP_EXTRA_ARGS="--break-system-packages"
 fi
-$python_path -m pip install --upgrade pip $PIP_EXTRA_ARGS
+if dpkg --compare-versions "$UBUNTU_VERSION_ID" eq "26.04"; then
+    # Ubuntu 26.04's python3-pip package is Debian-managed and cannot be
+    # uninstalled by pip during a self-upgrade. Keep the distro pip and only
+    # install the project requirements.
+    echo "Skipping pip self-upgrade on Ubuntu $UBUNTU_VERSION_ID."
+else
+    $python_path -m pip install --upgrade pip $PIP_EXTRA_ARGS
+fi
 $python_path -m pip install -r requirements.txt $PIP_EXTRA_ARGS
 
 # -- INSTALL CMAKE --

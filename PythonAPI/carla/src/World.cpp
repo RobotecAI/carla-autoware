@@ -313,6 +313,8 @@ void export_world() {
     .def("apply_settings", &ApplySettings, (arg("settings"), arg("seconds")=0.0))
     .def("get_weather", CONST_CALL_WITHOUT_GIL(cc::World, GetWeather))
     .def("set_weather", &cc::World::SetWeather)
+    .def("get_imu_sensor_gravity", CONST_CALL_WITHOUT_GIL(cc::World, GetIMUSensorGravity))
+    .def("set_imu_sensor_gravity", &cc::World::SetIMUSensorGravity, (arg("gravity")))
     .def("is_weather_enabled", CONST_CALL_WITHOUT_GIL(cc::World, IsWeatherEnabled))
     .def("get_snapshot", &cc::World::GetSnapshot)
     .def("get_actor", CONST_CALL_WITHOUT_GIL_1(cc::World, GetActor, carla::ActorId), (arg("actor_id")))
@@ -400,5 +402,7 @@ void export_world() {
          arg("color")=cc::DebugHelper::Color(255u, 0u, 0u),
          arg("life_time")=-1.0f,
          arg("persistent_lines")=true))
+    .def("clear_debug_shape", &cc::DebugHelper::ClearDebugShape)
+    .def("clear_debug_string", &cc::DebugHelper::ClearDebugString)
   ;
 }

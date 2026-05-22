@@ -18,7 +18,7 @@
 
 #include <util/disable-ue4-macros.h>
 #include <carla/geom/BoundingBox.h>
-#include <carla/geom/GeoLocation.h>
+#include <carla/geom/GeoProjection.h>
 #if WITH_ROS2
     #include <carla/ros2/ROS2.h>
 #endif
@@ -134,10 +134,10 @@ public:
   UFUNCTION(BlueprintCallable)
   TArray<FTransform> GetRecommendedSpawnPoints() const;
 
-  /// Return the GeoLocation point of the map loaded
-  const carla::geom::GeoLocation &GetGeoReference() const
+  /// Return the geo projection of the map loaded
+  const carla::geom::GeoProjection &GetGeoProjection() const
   {
-    return MapGeoReference;
+    return MapGeoProjection;
   }
 
   // ===========================================================================
@@ -321,7 +321,7 @@ public:
     return Recorder->GetReplayer();
   }
 
-  std::string StartRecorder(std::string name, bool AdditionalData);
+  std::string StartRecorder(std::string name, bool AdditionalData, bool StopReplayer);
 
   FIntVector GetCurrentMapOrigin() const { return CurrentMapOrigin; }
 
@@ -400,7 +400,7 @@ private:
 
   ACarlaRecorder *Recorder = nullptr;
 
-  carla::geom::GeoLocation MapGeoReference;
+  carla::geom::GeoProjection MapGeoProjection;
 
   FIntVector CurrentMapOrigin;
 
