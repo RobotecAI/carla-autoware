@@ -541,26 +541,29 @@ def _zero_out_static_mesh_relative_rotation(actor) -> None:
 # ---------------------------------------------------------------------------
 
 def _place_groups(groups: list, sign_id_to_actor: dict,
+                  sign_id_to_subtype: dict,
                   group_bp_path: Optional[str] = None) -> tuple:
-    """各 GroupSpec ごとに ATrafficLightGroup actor を配置し、TL を紐付ける (Phase 5 ②)。
+    """各 GroupSpec ごとに ATrafficLightGroup actor を配置し、subtype 別に
+    Controller を 2 個 (Vehicle/Pedestrian) 紐付ける (Phase 6)。
 
-    Carla の信号機システムは Group → UTrafficLightController → UTrafficLightComponent
-    の階層で動作する。WorldObserver.cpp が毎フレーム snapshot.sign_id を埋める条件:
-        Component->GetController() != nullptr && Component->GetGroup() != nullptr
-
-    GetGroup() は Controller 経由で返るので、Controller を Group.AddController() で
-    入れて、TL Component を Controller.AddTrafficLight() で入れれば両方の pointer
-    が埋まる (Controller.SetGroup / Component.SetController が内部で呼ばれる)。
+    Phase 5② の 1 Group = 1 Controller では subtype 混在で `set_state` が
+    全 TL に同期してしまう問題があったため、Phase 6 で member_actors を
+    subtype 別に分割し、Group に Controller を 2 個 add_controller する設計に
+    変更した。`set_state` は直接 Component に書くので subtype 独立操作が可能。
 
     Args:
-        groups: core.api.generate_placements() の groups リスト。
+        groups: corelib.api.generate_placements() の groups リスト。
         sign_id_to_actor: 配置済 TL の sign_id → Actor マップ。
+        sign_id_to_subtype: sign_id → subtype 文字列 (red_yellow_green / red_green)。
+            place_from_specs で {p.sign_id: p.subtype for p in placements} として構築する。
         group_bp_path: 派生 Group BP の Asset Path (bp_factory.ensure_group_bp で
             得られた値)。None の場合は C++ ATrafficLightGroup を直接 spawn。
 
     Returns:
         (created_count, updated_count)
     """
+    from lanelet2_traffic_light.frontend_editor.subtype_splitter import split_members_by_subtype
+
     # Group spawn 用クラスを決定: 派生 BP > C++ 直派生
     group_cls = None
     if group_bp_path:
@@ -586,15 +589,24 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
     updated = 0
 
     for g in groups:
-        # GroupSpec.refers は way_id (int) のリスト。sign_id は str(way_id)
-        member_actors = []
+        # subtype 別に member_actors を分割
+        members_by_subtype = split_members_by_subtype(
+            refers=g.refers,
+            sign_id_to_actor=sign_id_to_actor,
+            sign_id_to_subtype=sign_id_to_subtype,
+        )
+        # find_actor_by_sign_id によるレベル探索フォールバックも考慮
+        # (sign_id_to_actor に無いが、レベル上には存在する場合)
         for way_id in g.refers:
             sid = str(way_id)
-            actor = sign_id_to_actor.get(sid) or find_actor_by_sign_id(sid)
+            if sid in sign_id_to_actor:
+                continue
+            actor = find_actor_by_sign_id(sid)
             if actor is not None:
-                member_actors.append(actor)
+                subtype = sign_id_to_subtype.get(sid, "")
+                members_by_subtype.setdefault(subtype, []).append(actor)
 
-        if not member_actors:
+        if not members_by_subtype:
             # 全 member が snap_skipped 等で配置されなかったグループはスキップ
             continue
 
@@ -608,10 +620,11 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
                 pass
             updated += 1
         else:
-            # グループの原点は最初のメンバーアクターの位置に合わせる
+            # グループの原点は最初に出現する subtype 群の先頭メンバーに合わせる
+            first_actor = next(iter(members_by_subtype.values()))[0]
             group_actor = actor_subsys.spawn_actor_from_class(
                 group_cls,
-                member_actors[0].get_actor_location(),
+                first_actor.get_actor_location(),
                 unreal.Rotator(0, 0, 0),
             )
             if group_actor is None:
@@ -622,68 +635,59 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
             group_actor.set_actor_label(label)
             created += 1
 
-        # JunctionId に lanelet2 relation_id を流用 (-1 のままだと Manager 内で
-        # 自動連番付与されるが、Manager が走らない xodr 無し運用では問題ない。
-        # ただし lanelet2 由来の安定 ID にしておくと後追跡しやすい)
+        # JunctionId に lanelet2 relation_id を流用
         try:
             group_actor.set_editor_property("junction_id", int(g.relation_id))
         except Exception:
             pass
 
-        # 1 Group = 1 Controller (シンプル化)。
-        # Controller は UObject なので NewObject 相当の new_object で作成。
-        # outer は group_actor にして lifetime を Group に紐付ける。
-        try:
-            controller = unreal.new_object(
-                unreal.TrafficLightController, outer=group_actor
-            )
-        except Exception as e:
-            unreal.log_warning(
-                f"_place_groups: failed to create UTrafficLightController for "
-                f"group {g.relation_id}: {e}. Skipping group."
-            )
-            continue
-        # Controller ID は relation_id (lanelet2 由来) を流用
-        try:
-            controller.set_controller_id(str(g.relation_id))
-        except Exception:
-            pass
-        # Carla 標準的な初期値 (Manager_From_xodr 経路と同じ 10秒赤)
-        try:
-            controller.set_red_time(10.0)
-            controller.set_yellow_time(2.0)
-            controller.set_green_time(10.0)
-        except Exception:
-            pass
-
-        # Group.AddController() で Controller.Group ← Group になる
-        try:
-            group_actor.add_controller(controller)
-        except Exception as e:
-            unreal.log_warning(
-                f"_place_groups: group_actor.add_controller failed for "
-                f"group {g.relation_id}: {e}. Skipping group."
-            )
-            continue
-
-        # 各 TL の TrafficLightComponent を Controller.AddTrafficLight() で登録。
-        # 内部で TLComp->SetController(Controller) が呼ばれて Component の
-        # Controller pointer が埋まる。これで Component.GetGroup() = Controller.GetGroup()
-        # = Group となり WorldObserver の SignID 書き込み条件を満たす。
-        for actor in member_actors:
+        # subtype 別に Controller を 1 個ずつ作成
+        for subtype, members in members_by_subtype.items():
             try:
-                tlc = actor.get_traffic_light_component()
-            except Exception:
-                tlc = None
-            if tlc is None:
-                continue
-            try:
-                controller.add_traffic_light(tlc)
+                controller = unreal.new_object(
+                    unreal.TrafficLightController, outer=group_actor
+                )
             except Exception as e:
                 unreal.log_warning(
-                    f"_place_groups: add_traffic_light failed for {actor.get_actor_label()} "
-                    f"in group {g.relation_id}: {e}"
+                    f"_place_groups: failed to create UTrafficLightController for "
+                    f"group {g.relation_id} subtype={subtype}: {e}. Skipping."
                 )
+                continue
+            controller_id = f"{g.relation_id}_{subtype}" if subtype else str(g.relation_id)
+            try:
+                controller.set_controller_id(controller_id)
+            except Exception:
+                pass
+            try:
+                controller.set_red_time(10.0)
+                controller.set_yellow_time(2.0)
+                controller.set_green_time(10.0)
+            except Exception:
+                pass
+
+            try:
+                group_actor.add_controller(controller)
+            except Exception as e:
+                unreal.log_warning(
+                    f"_place_groups: group_actor.add_controller failed for "
+                    f"group {g.relation_id} subtype={subtype}: {e}. Skipping subtype."
+                )
+                continue
+
+            for actor in members:
+                try:
+                    tlc = actor.get_traffic_light_component()
+                except Exception:
+                    tlc = None
+                if tlc is None:
+                    continue
+                try:
+                    controller.add_traffic_light(tlc)
+                except Exception as e:
+                    unreal.log_warning(
+                        f"_place_groups: add_traffic_light failed for {actor.get_actor_label()} "
+                        f"in group {g.relation_id} subtype={subtype}: {e}"
+                    )
 
     return created, updated
 
@@ -933,7 +937,14 @@ def place_from_specs(
                 )
 
         # グループ配置 (individual アクター配置後に実行する必要がある)
-        gc, gu = _place_groups(groups, sign_id_to_actor, group_bp_path=group_bp_path)
+        # Phase 6: subtype 別 Controller のために sign_id → subtype マップを構築
+        sign_id_to_subtype = {p.sign_id: p.subtype for p in placements}
+        gc, gu = _place_groups(
+            groups,
+            sign_id_to_actor,
+            sign_id_to_subtype,
+            group_bp_path=group_bp_path,
+        )
         report.groups_created = gc
         report.groups_updated = gu
 
