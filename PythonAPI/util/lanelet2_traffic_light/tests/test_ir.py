@@ -26,3 +26,15 @@ def test_placement_spec_optional_group():
                       location_cm=(0,0,0), rotation_deg=(0,0,0))
     assert p.group_relation_id is None
     assert p.source_way_id == 0
+
+
+def test_node_has_ele_field_default_none():
+    from lanelet2_traffic_light.core.ir.traffic_light_ir import Node
+    n = Node(id=1, lat=35.0, lon=139.0, local_x=0.0, local_y=0.0, mgrs_code="54SUE")
+    assert n.ele is None
+
+
+def test_node_accepts_explicit_ele():
+    from lanelet2_traffic_light.core.ir.traffic_light_ir import Node
+    n = Node(id=1, lat=35.0, lon=139.0, local_x=0.0, local_y=0.0, mgrs_code="54SUE", ele=6.083)
+    assert n.ele == 6.083
