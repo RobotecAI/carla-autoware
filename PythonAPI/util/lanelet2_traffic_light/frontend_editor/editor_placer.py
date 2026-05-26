@@ -496,7 +496,10 @@ def _spawn_or_update(spec: PlacementSpec,
             # TrafficLightPedestrian は default 向きで縦立ちのため)。Yaw のみ採用、
             # Roll/Pitch=0 強制。
             if spec.subtype == "red_green":
-                rotation = unreal.Rotator(roll=0.0, pitch=0.0, yaw=rotation.yaw)
+                # snap source mesh (例 Scene_733) と親 BP の TrafficLightPedestrian は
+                # ライト面の正面方向が逆 (snap source は -X 方向想定、親 BP は +X 方向想定
+                # と推定)。Yaw に +180° 加算して反転。
+                rotation = unreal.Rotator(roll=0.0, pitch=0.0, yaw=rotation.yaw + 180.0)
         else:
             prefix_str = "/".join(p + "_*" for p in label_prefixes)
             unreal.log_warning(
@@ -523,6 +526,29 @@ def _spawn_or_update(spec: PlacementSpec,
             # snap target から取り、mesh override はスキップする。
             if snapped_mesh_asset is not None and spec.subtype != "red_green":
                 _override_static_mesh(existing, snapped_mesh_asset)
+        # Phase 6 課題 A 追加修正: 既存アクター更新パスでも Z オフセット補正を適用。
+        # 新規 spawn パスと同じロジック (関数末尾の new spawn 側の補正と対称)。
+        if spec.subtype == "red_green":
+            smc = None
+            for c in existing.get_components_by_class(unreal.StaticMeshComponent):
+                smc = c
+                break
+            if smc is not None:
+                try:
+                    local_bounds = smc.get_local_bounds()  # tuple (origin: Vector, extent: Vector)
+                    origin_z = local_bounds[0].z
+                    extent_z = local_bounds[1].z
+                    z_offset = extent_z - origin_z  # ピボットを mesh 下端に持っていくオフセット
+                    smc.set_relative_location(unreal.Vector(0.0, 0.0, z_offset))
+                    unreal.log(
+                        f"_spawn_or_update[pedestrian Z offset/update]: sign_id={spec.sign_id} "
+                        f"origin_z={origin_z:.2f} extent_z={extent_z:.2f} z_offset={z_offset:.2f}"
+                    )
+                except Exception as e:
+                    unreal.log_warning(
+                        f"_spawn_or_update[pedestrian Z offset/update]: sign_id={spec.sign_id} "
+                        f"failed to apply Z offset: {e}"
+                    )
         return existing, False, snap_info
 
     # 新規 spawn の手前で snap fail を skip する
@@ -573,6 +599,35 @@ def _spawn_or_update(spec: PlacementSpec,
     # エディタ上で識別しやすいラベルを付ける (subtype 別 prefix: TLV_/TLP_/TL_)
     prefix = _label_prefix_for_subtype(spec.subtype)
     actor.set_actor_label(f"{prefix}{spec.sign_id}")
+
+    # Phase 6 課題 A 追加修正: 歩行者用 TL の StaticMesh Component RelativeLocation.Z を
+    # 補正してメッシュピボットを下端に合わせる。親 BP_PedestrianTrafficLight の
+    # TrafficLightPedestrian mesh は LocalBounds origin Z=-44.32, extent Z=40.23 で、
+    # ピボット (Z=0) がメッシュ上端より上にある。snap target の World Z はランプ取り付け
+    # 位置 (= メッシュ下端であってほしい) を想定しているので、Component を +(extent - origin)
+    # = +(40.23 - (-44.32)) = +84.55 cm 持ち上げてピボットをメッシュ下端に揃える。
+    # bounds から動的計算するため別の歩行者用メッシュにも追従可能。
+    if spec.subtype == "red_green":
+        smc = None
+        for c in actor.get_components_by_class(unreal.StaticMeshComponent):
+            smc = c
+            break
+        if smc is not None:
+            try:
+                local_bounds = smc.get_local_bounds()  # tuple (origin: Vector, extent: Vector)
+                origin_z = local_bounds[0].z
+                extent_z = local_bounds[1].z
+                z_offset = extent_z - origin_z  # ピボットを mesh 下端に持っていくオフセット
+                smc.set_relative_location(unreal.Vector(0.0, 0.0, z_offset))
+                unreal.log(
+                    f"_spawn_or_update[pedestrian Z offset]: sign_id={spec.sign_id} "
+                    f"origin_z={origin_z:.2f} extent_z={extent_z:.2f} z_offset={z_offset:.2f}"
+                )
+            except Exception as e:
+                unreal.log_warning(
+                    f"_spawn_or_update[pedestrian Z offset]: sign_id={spec.sign_id} "
+                    f"failed to apply Z offset: {e}"
+                )
 
     return actor, True, snap_info
 
