@@ -36,6 +36,7 @@ class PlacementReport:
     # (lanelet2 は東京湾岸全域カバーするがメッシュは Odaiba 中心のみ) が
     # ここに入る。
     snap_skipped: list = field(default_factory=list)  # (sign_id, target_xyz_cm)
+    snap_skipped_records: list = field(default_factory=list)  # dict 形式 (key=value 出力用)
     # 逆方向の漏れ: Odaiba メッシュとしては存在するが、どの lanelet2 way とも
     # マッチしなかった既存信号機メッシュ (label, (x_cm, y_cm, z_cm)) のリスト。
     # 撤去された信号機の残置、マップ設計時の冗長、lanelet2 編集漏れ等の
@@ -815,45 +816,105 @@ def _write_full_run_report(report: "PlacementReport", path: str,
 
         # 3. PLACED
         f.write(f"## PLACED ({len(report.placed_records)} entries)\n")
-        f.write("# format: sign_id  was_created  bp_class  target_label  xy_dist_cm  mesh_name  world_xyz_cm\n")
-        for r in report.placed_records:
-            xy = "" if r["xy_dist_cm"] is None else f"{r['xy_dist_cm']:.1f}"
-            tgt = r["target_label"] or "<no-snap>"
-            mesh = r["mesh_name"] or "<n/a>"
-            w = r["world_xyz"]
-            f.write(
-                f"sign_id={r['sign_id']:<8s} created={str(r['was_created']):5s} "
-                f"bp={r['bp_class']:<25s} target={tgt:<28s} "
-                f"xy={xy:>6s} mesh={mesh:<14s} "
-                f"world=({w[0]:.1f}, {w[1]:.1f}, {w[2]:.1f})\n"
-            )
-        f.write("\n")
+        f.write("\n# placed\n")
+        for rec in report.placed_records:
+            wx, wy, wz = rec.get("world_xyz", (0.0, 0.0, 0.0))
+            parts = [
+                f"sign_id={rec['sign_id']}",
+                f"subtype={rec.get('subtype', '')}",
+                f"bp={rec.get('bp_class', '')}",
+                f"snap={'true' if rec.get('target_label') else 'false'}",
+            ]
+            if rec.get("target_label"):
+                parts.append(f"target={rec['target_label']}")
+            if rec.get("mesh_name"):
+                parts.append(f"mesh={rec['mesh_name']}")
+            if rec.get("xy_dist_cm") is not None:
+                parts.append(f"xy_dist_cm={rec['xy_dist_cm']:.1f}")
+            parts += [
+                f"world_x={wx:.1f}", f"world_y={wy:.1f}", f"world_z={wz:.1f}",
+            ]
+            if rec.get("lat") is not None:
+                parts.append(f"lat={rec['lat']:.6f}")
+            if rec.get("lon") is not None:
+                parts.append(f"lon={rec['lon']:.6f}")
+            if rec.get("ele") is not None:
+                parts.append(f"ele={rec['ele']:.3f}")
+            if rec.get("local_x") is not None:
+                parts.append(f"local_x={rec['local_x']:.2f}")
+            if rec.get("local_y") is not None:
+                parts.append(f"local_y={rec['local_y']:.2f}")
+            if rec.get("mgrs_code"):
+                parts.append(f"mgrs={rec['mgrs_code']}")
+            f.write(" ".join(parts) + "\n")
 
         # 4. SNAP_SKIPPED
-        f.write(f"## SNAP_SKIPPED ({len(report.snap_skipped)} entries)\n")
+        f.write(f"\n## SNAP_SKIPPED ({len(report.snap_skipped)} entries)\n")
         f.write("# lanelet2 way exists but no Odaiba mesh within snap_radius\n")
-        f.write("# format: sign_id  core_xyz_cm\n")
-        for sid, loc in report.snap_skipped:
-            f.write(
-                f"sign_id={sid:<8s} core=({loc[0]:.1f}, {loc[1]:.1f}, {loc[2]:.1f})\n"
-            )
-        f.write("\n")
+        f.write("\n# snap_skipped\n")
+        for rec in getattr(report, "snap_skipped_records", []):
+            parts = [
+                f"sign_id={rec['sign_id']}",
+                f"subtype={rec.get('subtype', '')}",
+                f"reason={rec.get('reason', 'no_snap_target')}",
+                f"target_x={rec['target_x']:.1f}",
+                f"target_y={rec['target_y']:.1f}",
+                f"target_z={rec['target_z']:.1f}",
+            ]
+            if rec.get("lat") is not None:
+                parts.append(f"lat={rec['lat']:.6f}")
+            if rec.get("lon") is not None:
+                parts.append(f"lon={rec['lon']:.6f}")
+            if rec.get("ele") is not None:
+                parts.append(f"ele={rec['ele']:.3f}")
+            if rec.get("local_x") is not None:
+                parts.append(f"local_x={rec['local_x']:.2f}")
+            if rec.get("local_y") is not None:
+                parts.append(f"local_y={rec['local_y']:.2f}")
+            if rec.get("mgrs_code"):
+                parts.append(f"mgrs={rec['mgrs_code']}")
+            f.write(" ".join(parts) + "\n")
 
         # 5. FAILED
-        f.write(f"## FAILED ({len(report.failed)} entries)\n")
-        for sid, reason in report.failed:
-            f.write(f"sign_id={sid:<8s} reason={reason}\n")
-        f.write("\n")
+        f.write(f"\n## FAILED ({len(report.failed)} entries)\n")
+        f.write("\n# failed\n")
+        for sign_id, error in report.failed:
+            err_escaped = error.replace('"', '\\"').replace('\n', '\\n')
+            f.write(f'sign_id={sign_id} error="{err_escaped}"\n')
 
         # 6. UNUSED_MESHES
-        f.write(f"## UNUSED_MESHES ({len(report.unused_existing_meshes)} entries)\n")
+        f.write(f"\n## UNUSED_MESHES ({len(report.unused_existing_meshes)} entries)\n")
         f.write("# Odaiba mesh exists but no lanelet2 way matched (reverse mismatch)\n")
-        f.write("# format: label  world_xyz_cm\n")
+        f.write("\n# unused_meshes\n")
         for label, loc in report.unused_existing_meshes:
-            f.write(
-                f"label={label:<35s} world=({loc[0]:.1f}, {loc[1]:.1f}, {loc[2]:.1f})\n"
-            )
+            wx, wy, wz = loc[0], loc[1], loc[2]
+            parts = [
+                f"label={label}",
+                f"world_x={wx:.1f}",
+                f"world_y={wy:.1f}",
+                f"world_z={wz:.1f}",
+            ]
+            f.write(" ".join(parts) + "\n")
         f.write("\n")
+
+        # 7. PEDESTRIAN_MESH_MATERIALS
+        if report.pedestrian_material_stats:
+            f.write("\n# pedestrian_mesh_materials\n")
+            for row in report.pedestrian_material_stats:
+                f.write(
+                    f"mesh={row['mesh']} num_elements={row['num_elements']} "
+                    f"elements=\"{','.join(row['elements'])}\" count={row['count']}\n"
+                )
+            # summary 行
+            total = sum(r["count"] for r in report.pedestrian_material_stats)
+            unique = len(report.pedestrian_material_stats)
+            n3 = sum(1 for r in report.pedestrian_material_stats if r["num_elements"] == 3)
+            n2 = sum(1 for r in report.pedestrian_material_stats if r["num_elements"] == 2)
+            f.write("\n# pedestrian_mesh_summary\n")
+            f.write(
+                f"total_actors={total} unique_meshes={unique} "
+                f"meshes_with_3_elements={n3} meshes_with_2_elements={n2}\n"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -960,11 +1021,26 @@ def place_from_specs(
                 if actor is None:
                     # snap fail で skip された (new spawn のみ; 既存更新は actor を返す)
                     report.snap_skipped.append((spec.sign_id, spec.location_cm))
+                    report.snap_skipped_records.append({
+                        "sign_id": spec.sign_id,
+                        "subtype": spec.subtype,
+                        "reason": "no_snap_target",
+                        "target_x": spec.location_cm[0],
+                        "target_y": spec.location_cm[1],
+                        "target_z": spec.location_cm[2],
+                        "lat": spec.lat,
+                        "lon": spec.lon,
+                        "ele": spec.ele,
+                        "local_x": spec.local_x,
+                        "local_y": spec.local_y,
+                        "mgrs_code": spec.mgrs_code,
+                    })
                     continue
                 sign_id_to_actor[spec.sign_id] = actor
                 # 配置レコード (レポート出力用)
                 rec = {
                     "sign_id": spec.sign_id,
+                    "subtype": spec.subtype,
                     "was_created": was_created,
                     "bp_class": spec.actor_class_path.split("/")[-1].split(".")[0],
                     "target_label": (snap_info["label"] if snap_info else None),
@@ -975,6 +1051,12 @@ def place_from_specs(
                         actor.get_actor_location().y,
                         actor.get_actor_location().z,
                     ),
+                    "lat": spec.lat,
+                    "lon": spec.lon,
+                    "ele": spec.ele,
+                    "local_x": spec.local_x,
+                    "local_y": spec.local_y,
+                    "mgrs_code": spec.mgrs_code,
                 }
                 report.placed_records.append(rec)
                 if was_created:
