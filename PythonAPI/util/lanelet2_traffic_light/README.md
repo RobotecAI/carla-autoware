@@ -116,3 +116,17 @@ PYTHONPATH=.. python3 -m pytest tests/ -v
 - 実装プラン: `docs/superpowers/plans/2026-05-20-lanelet2-traffic-light.md`
 - Phase 0 検証メモ: `docs/phase0_validation.md` (パッケージ内)
 - 知見一覧: `work.knowledge/` (ワークスペース直下)
+
+## 信号機の状態を維持して観察する (Phase 6 暫定)
+
+`control_traffic_light_by_sign_id.py --freeze` 単独では cycle 進行が止まらない (Phase 6 時点で `freeze_all_traffic_lights` が `ATrafficLightManager::TrafficGroups[]` の空ループで no-op になる)。Phase 7+ で C++ 側の self-init fallback で対処予定。
+
+それまでは cycle 時間を巨大値に上書きする workaround を使う:
+
+```bash
+# 例: sign_id=6621 を red のまま保持
+python3 control_traffic_light_by_sign_id.py --id 6621 --state red --freeze \
+    --green-time 99999 --yellow-time 99999 --red-time 99999 --all-in-group
+```
+
+`--all-in-group` で同じ Group 内の全 TL に cycle 時間が適用される。
