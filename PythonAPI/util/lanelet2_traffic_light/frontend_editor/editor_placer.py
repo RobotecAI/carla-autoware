@@ -378,6 +378,13 @@ def _spawn_or_update(spec: PlacementSpec,
     Raises:
         RuntimeError: BP クラスのロードまたは spawn に失敗した場合。
     """
+    # Phase 6 課題 A: 歩行者用 (subtype=red_green) は snap 不可。
+    # 派生 BP_OdaibaPedestrianTL の snap mesh (例 Scene_805) は 2 element しか
+    # 持たず、親 BP_PedestrianTrafficLight の想定 3 element (Walk/Frame/Stop)
+    # と不一致で MID 生成失敗 → 不点灯。snap OFF で親 BP の StaticMesh
+    # (TrafficLightPedestrian) を使えば 3 element 揃って点灯する。
+    if spec.subtype == "red_green":
+        snap_to_existing_mesh = False
     # PlacementSpec.location_cm は (X, Y, Z) のタプル
     location = unreal.Vector(spec.location_cm[0], spec.location_cm[1], spec.location_cm[2])
     # PlacementSpec.rotation_deg は (roll, pitch, yaw) 順。
