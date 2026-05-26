@@ -504,7 +504,12 @@ def _spawn_or_update(spec: PlacementSpec,
         existing.set_actor_location(location, sweep=False, teleport=True)
         existing.set_actor_rotation(rotation, teleport_physics=True)
         if snap_to_existing_mesh:
-            _zero_out_static_mesh_relative_rotation(existing)
+            # Phase 6 課題 A: 歩行者用 (subtype=red_green) は親 BP_PedestrianTrafficLight
+            # の StaticMesh Component には正しい向きが baked-in されているため、
+            # zero out すると親 BP のデフォルト向きが失われてメッシュが地面と平行に倒れる。
+            # _override_static_mesh と同じく subtype != red_green でガードを追加。
+            if spec.subtype != "red_green":
+                _zero_out_static_mesh_relative_rotation(existing)
             # Phase 6 課題 A: 歩行者用 (subtype=red_green) は snap した既存メッシュ
             # ではなく、親 BP_PedestrianTrafficLight の StaticMesh (3 element:
             # Walk/Frame/Stop) をそのまま使う。snap mesh (Scene_805 等の 2 element)
@@ -540,7 +545,12 @@ def _spawn_or_update(spec: PlacementSpec,
     # で override すると MID 生成失敗で不点灯になるため、位置/向きだけ
     # snap target から取り、mesh override はスキップする。
     if snap_to_existing_mesh:
-        _zero_out_static_mesh_relative_rotation(actor)
+        # Phase 6 課題 A: 歩行者用 (subtype=red_green) は親 BP_PedestrianTrafficLight
+        # の StaticMesh Component には正しい向きが baked-in されているため、
+        # zero out すると親 BP のデフォルト向きが失われてメッシュが地面と平行に倒れる。
+        # _override_static_mesh と同じく subtype != red_green でガードを追加。
+        if spec.subtype != "red_green":
+            _zero_out_static_mesh_relative_rotation(actor)
         if snapped_mesh_asset is not None and spec.subtype != "red_green":
             _override_static_mesh(actor, snapped_mesh_asset)
 
