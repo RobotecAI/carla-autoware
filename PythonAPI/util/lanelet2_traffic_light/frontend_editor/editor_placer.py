@@ -48,6 +48,8 @@ class PlacementReport:
     z_stats_snapshot: dict = field(default_factory=dict)
     groups_created: int = 0
     groups_updated: int = 0
+    pedestrian_material_stats: list = field(default_factory=list)
+    # aggregate_material_stats の返り値リストを格納
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +250,58 @@ def _collect_mesh_z_stats(label_prefixes=("Traffic_Lights", "Pedestrian_Lights")
                 by_prefix[p].append(a.get_actor_location().z)
                 break
     return {p: compute_z_stats(zs) for p, zs in by_prefix.items() if zs}
+
+
+def _collect_pedestrian_mesh_materials() -> list:
+    """レベル上の Pedestrian_Lights_* アクターの Material element 構成を集計。
+
+    Returns:
+        aggregate_material_stats() の出力リスト
+        [{"mesh": str, "num_elements": int, "elements": tuple, "count": int}, ...]
+    """
+    from lanelet2_traffic_light.frontend_editor.material_stats import aggregate_material_stats
+
+    actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    records: list = []
+    for a in actor_subsys.get_all_level_actors():
+        label = a.get_actor_label()
+        if not label.startswith("Pedestrian_Lights"):
+            continue
+        smc = None
+        try:
+            smc = a.static_mesh_component
+        except AttributeError:
+            # StaticMeshActor 以外はスキップ
+            try:
+                smc = a.get_component_by_class(unreal.StaticMeshComponent)
+            except Exception:
+                smc = None
+        if smc is None:
+            continue
+        try:
+            mesh_asset = smc.static_mesh
+        except Exception:
+            mesh_asset = None
+        if mesh_asset is None:
+            continue
+        try:
+            mesh_name = mesh_asset.get_name()
+        except Exception:
+            continue
+        # Material element 名を順序保持で取得
+        try:
+            num = smc.get_num_materials()
+        except Exception:
+            num = 0
+        element_names: list = []
+        for i in range(num):
+            try:
+                mat = smc.get_material(i)
+                element_names.append(mat.get_name() if mat is not None else "<None>")
+            except Exception:
+                element_names.append("<error>")
+        records.append((mesh_name, tuple(element_names)))
+    return aggregate_material_stats(records)
 
 
 def _label_prefixes_for_bp_class(bp_class_path: str) -> tuple:
@@ -874,6 +928,20 @@ def place_from_specs(
                 }
                 for prefix, st in mesh_z_stats.items()
             }
+
+        # Phase 6 課題 D: 歩行者用メッシュの Material 構成を集計
+        try:
+            report.pedestrian_material_stats = _collect_pedestrian_mesh_materials()
+            for row in report.pedestrian_material_stats:
+                unreal.log(
+                    f"pedestrian_mesh: mesh={row['mesh']} num_elements={row['num_elements']} "
+                    f"elements=\"{','.join(row['elements'])}\" count={row['count']}"
+                )
+        except Exception as e:
+            unreal.log_warning(
+                f"_collect_pedestrian_mesh_materials failed: {e}. continuing without stats."
+            )
+            report.pedestrian_material_stats = []
 
         # snap モードで採用された既存メッシュのラベル集合 (逆方向漏れ検出用)
         used_mesh_labels: set = set()
