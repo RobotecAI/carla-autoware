@@ -433,13 +433,6 @@ def _spawn_or_update(spec: PlacementSpec,
     Raises:
         RuntimeError: BP クラスのロードまたは spawn に失敗した場合。
     """
-    # Phase 6 課題 A: 歩行者用 (subtype=red_green) は snap 不可。
-    # 派生 BP_OdaibaPedestrianTL の snap mesh (例 Scene_805) は 2 element しか
-    # 持たず、親 BP_PedestrianTrafficLight の想定 3 element (Walk/Frame/Stop)
-    # と不一致で MID 生成失敗 → 不点灯。snap OFF で親 BP の StaticMesh
-    # (TrafficLightPedestrian) を使えば 3 element 揃って点灯する。
-    if spec.subtype == "red_green":
-        snap_to_existing_mesh = False
     # PlacementSpec.location_cm は (X, Y, Z) のタプル
     location = unreal.Vector(spec.location_cm[0], spec.location_cm[1], spec.location_cm[2])
     # PlacementSpec.rotation_deg は (roll, pitch, yaw) 順。
@@ -498,7 +491,12 @@ def _spawn_or_update(spec: PlacementSpec,
         existing.set_actor_rotation(rotation, teleport_physics=True)
         if snap_to_existing_mesh:
             _zero_out_static_mesh_relative_rotation(existing)
-            if snapped_mesh_asset is not None:
+            # Phase 6 課題 A: 歩行者用 (subtype=red_green) は snap した既存メッシュ
+            # ではなく、親 BP_PedestrianTrafficLight の StaticMesh (3 element:
+            # Walk/Frame/Stop) をそのまま使う。snap mesh (Scene_805 等の 2 element)
+            # で override すると MID 生成失敗で不点灯になるため、位置/向きだけ
+            # snap target から取り、mesh override はスキップする。
+            if snapped_mesh_asset is not None and spec.subtype != "red_green":
                 _override_static_mesh(existing, snapped_mesh_asset)
         return existing, False, snap_info
 
@@ -522,9 +520,14 @@ def _spawn_or_update(spec: PlacementSpec,
     # 二重適用されてしまうため、ここで打ち消す。さらに、各 Traffic_Lights_* は
     # 個別の Scene_NNNN アセットを使うため、その mesh も snap target のものに
     # 差し替えてピボット位置を一致させる。
+    # Phase 6 課題 A: 歩行者用 (subtype=red_green) は snap した既存メッシュ
+    # ではなく、親 BP_PedestrianTrafficLight の StaticMesh (3 element:
+    # Walk/Frame/Stop) をそのまま使う。snap mesh (Scene_805 等の 2 element)
+    # で override すると MID 生成失敗で不点灯になるため、位置/向きだけ
+    # snap target から取り、mesh override はスキップする。
     if snap_to_existing_mesh:
         _zero_out_static_mesh_relative_rotation(actor)
-        if snapped_mesh_asset is not None:
+        if snapped_mesh_asset is not None and spec.subtype != "red_green":
             _override_static_mesh(actor, snapped_mesh_asset)
 
     # TrafficLightComponent に sign_id を書き込む (後から find_actor_by_sign_id で検索できるように)
