@@ -75,3 +75,34 @@ def test_skip_malformed_node(tmp_path):
     with pytest.warns(UserWarning, match="missing local_x or local_y"):
         tls, _ = parse_osm(str(p))
     assert tls == []
+
+
+def test_node_reads_ele_tag():
+    """ele タグ付き node が float 値で読み取られる。"""
+    import os
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    tls, groups = parse_osm(fixture)
+    # 任意の TL の p0 / p1 のうち、fixture で ele タグを付けた node の ele を確認
+    found_ele = False
+    for tl in tls:
+        for node in (tl.p0, tl.p1):
+            if node.ele is not None:
+                assert isinstance(node.ele, float)
+                assert node.ele == 6.083  # fixture と一致させる
+                found_ele = True
+    assert found_ele, "fixture に ele タグ付き node が必要"
+
+
+def test_node_ele_missing_returns_none():
+    """ele タグの無い node の ele は None。"""
+    import os
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    tls, groups = parse_osm(fixture)
+    found_none = False
+    for tl in tls:
+        for node in (tl.p0, tl.p1):
+            if node.ele is None:
+                found_none = True
+    assert found_none, "fixture に ele タグの無い node が必要"

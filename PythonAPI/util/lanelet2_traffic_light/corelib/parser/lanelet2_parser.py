@@ -9,12 +9,16 @@ from lanelet2_traffic_light.corelib.ir.traffic_light_ir import (
 
 
 def _read_node(node_elem: ET.Element) -> Node:
-    """node 要素 → Node IR。local_x/local_y は必須、欠落時 KeyError。"""
+    """node 要素 → Node IR。local_x/local_y は必須、欠落時 KeyError。
+    ele タグはオプション (lanelet2 .osm の <tag k="ele">、欠落時 None)。
+    """
     tags = {t.get("k"): t.get("v") for t in node_elem.findall("tag")}
     if "local_x" not in tags or "local_y" not in tags:
         raise KeyError(
             f"node id={node_elem.get('id')} missing local_x or local_y tag"
         )
+    ele_str = tags.get("ele")
+    ele = float(ele_str) if ele_str is not None else None
     return Node(
         id=int(node_elem.get("id")),
         lat=float(node_elem.get("lat")),
@@ -22,6 +26,7 @@ def _read_node(node_elem: ET.Element) -> Node:
         local_x=float(tags["local_x"]),
         local_y=float(tags["local_y"]),
         mgrs_code=tags.get("mgrs_code", ""),
+        ele=ele,
     )
 
 

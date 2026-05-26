@@ -4,6 +4,7 @@
     <tag k='mgrs_code' v='54SUE894431'/>
     <tag k='local_x' v='100.0'/>
     <tag k='local_y' v='200.0'/>
+    <tag k='ele' v='6.083'/>
   </node>
   <node id='2' lat='35.626' lon='139.778'>
     <tag k='mgrs_code' v='54SUE894431'/>
