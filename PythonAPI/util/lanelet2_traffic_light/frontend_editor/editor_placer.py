@@ -855,6 +855,7 @@ def _write_full_run_report(report: "PlacementReport", path: str,
             wx, wy, wz = rec.get("world_xyz", (0.0, 0.0, 0.0))
             parts = [
                 f"sign_id={rec['sign_id']}",
+                f"actor={rec.get('actor_label', '')}",
                 f"subtype={rec.get('subtype', '')}",
                 f"bp={rec.get('bp_class', '')}",
                 f"snap={'true' if rec.get('target_label') else 'false'}",
@@ -1074,6 +1075,7 @@ def place_from_specs(
                 # 配置レコード (レポート出力用)
                 rec = {
                     "sign_id": spec.sign_id,
+                    "actor_label": actor.get_actor_label(),
                     "subtype": spec.subtype,
                     "was_created": was_created,
                     "bp_class": spec.actor_class_path.split("/")[-1].split(".")[0],
