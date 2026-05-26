@@ -324,6 +324,20 @@ def _label_prefixes_for_bp_class(bp_class_path: str) -> tuple:
     return ("Traffic_Lights",)
 
 
+def _label_prefix_for_subtype(subtype: str) -> str:
+    """subtype 別の actor label prefix を返す。
+
+    - red_yellow_green (車両用) → "TLV_"
+    - red_green (歩行者用)     → "TLP_"
+    - その他 (未知 subtype)    → "TL_" (フォールバック、Phase 5② 以前と互換)
+    """
+    if subtype == "red_yellow_green":
+        return "TLV_"
+    if subtype == "red_green":
+        return "TLP_"
+    return "TL_"
+
+
 def _find_nearest_existing_signal_mesh(target: unreal.Vector,
                                        max_distance_cm: float = 300.0,
                                        label_prefixes: tuple = ("Traffic_Lights",),
@@ -540,8 +554,9 @@ def _spawn_or_update(spec: PlacementSpec,
             f"sign_id={spec.sign_id} will not be persisted on the component."
         )
 
-    # エディタ上で識別しやすいラベルを付ける
-    actor.set_actor_label(f"TL_{spec.sign_id}")
+    # エディタ上で識別しやすいラベルを付ける (subtype 別 prefix: TLV_/TLP_/TL_)
+    prefix = _label_prefix_for_subtype(spec.subtype)
+    actor.set_actor_label(f"{prefix}{spec.sign_id}")
 
     return actor, True, snap_info
 
