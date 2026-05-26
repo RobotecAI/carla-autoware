@@ -1,6 +1,6 @@
 import pytest
-from lanelet2_traffic_light.core.ir.traffic_light_ir import Node, TrafficLightSpec
-from lanelet2_traffic_light.core.geometry.pose_estimator import estimate_center_and_yaw
+from lanelet2_traffic_light.corelib.ir.traffic_light_ir import Node, TrafficLightSpec
+from lanelet2_traffic_light.corelib.geometry.pose_estimator import estimate_center_and_yaw
 
 
 def _spec(p0_xy, p1_xy):

@@ -1,5 +1,5 @@
 import pytest
-from lanelet2_traffic_light.core.parser.lanelet2_parser import parse_osm
+from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
 
 
 def test_parse_returns_traffic_lights_and_groups(minimal_osm_path):

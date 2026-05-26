@@ -1,5 +1,5 @@
 import pytest
-from lanelet2_traffic_light.core.geometry.mgrs_transform import MgrsTransformer
+from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
 
 
 def test_local_xy_to_unreal_cm_simple():

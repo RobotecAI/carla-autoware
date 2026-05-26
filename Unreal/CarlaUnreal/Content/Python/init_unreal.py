@@ -59,9 +59,9 @@ def _build_run_script(limit):
 import os
 import unreal
 try:
-    from lanelet2_traffic_light.core.api import generate_placements
-    from lanelet2_traffic_light.core.profile.profile_jp import PROFILE_JP
-    from lanelet2_traffic_light.core.sign_id.way_id_resolver import WayIdResolver
+    from lanelet2_traffic_light.corelib.api import generate_placements
+    from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+    from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
     from lanelet2_traffic_light.frontend_editor.editor_placer import (
         get_world_mgrs_data, place_from_specs,
     )

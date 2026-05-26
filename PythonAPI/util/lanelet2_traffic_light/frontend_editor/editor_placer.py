@@ -12,8 +12,8 @@ from typing import Optional
 
 import unreal
 
-from lanelet2_traffic_light.core.ir.traffic_light_ir import PlacementSpec, GroupSpec
-from lanelet2_traffic_light.core.geometry.mgrs_transform import MgrsTransformer
+from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec, GroupSpec
+from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
 from lanelet2_traffic_light.frontend_editor.snap_stats import (
     MeshZStats, compute_z_stats,
 )

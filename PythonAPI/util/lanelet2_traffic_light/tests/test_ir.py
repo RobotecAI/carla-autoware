@@ -1,6 +1,6 @@
 import pytest
 
-from lanelet2_traffic_light.core.ir.traffic_light_ir import (
+from lanelet2_traffic_light.corelib.ir.traffic_light_ir import (
     Node, TrafficLightSpec, LightBulbsSpec, GroupSpec, PlacementSpec,
 )
 
@@ -29,12 +29,12 @@ def test_placement_spec_optional_group():
 
 
 def test_node_has_ele_field_default_none():
-    from lanelet2_traffic_light.core.ir.traffic_light_ir import Node
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import Node
     n = Node(id=1, lat=35.0, lon=139.0, local_x=0.0, local_y=0.0, mgrs_code="54SUE")
     assert n.ele is None
 
 
 def test_node_accepts_explicit_ele():
-    from lanelet2_traffic_light.core.ir.traffic_light_ir import Node
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import Node
     n = Node(id=1, lat=35.0, lon=139.0, local_x=0.0, local_y=0.0, mgrs_code="54SUE", ele=6.083)
     assert n.ele == 6.083

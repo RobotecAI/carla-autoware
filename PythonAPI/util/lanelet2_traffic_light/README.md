@@ -50,10 +50,10 @@ PythonAPI/util/lanelet2_traffic_light/
 ### C. Python から (コア単体)
 
 ```python
-from lanelet2_traffic_light.core.api import generate_placements
-from lanelet2_traffic_light.core.profile.profile_jp import PROFILE_JP
-from lanelet2_traffic_light.core.sign_id.way_id_resolver import WayIdResolver
-from lanelet2_traffic_light.core.geometry.mgrs_transform import MgrsTransformer
+from lanelet2_traffic_light.corelib.api import generate_placements
+from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
+from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
 
 # Odaiba 実値 (Phase 0 で確定)
 transformer = MgrsTransformer(

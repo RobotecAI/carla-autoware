@@ -1,5 +1,5 @@
 import pytest
-from lanelet2_traffic_light.core.profile.profile_jp import PROFILE_JP
+from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
 
 
 def test_profile_has_required_subtypes():

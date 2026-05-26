@@ -1,5 +1,5 @@
-from lanelet2_traffic_light.core.ir.traffic_light_ir import Node, TrafficLightSpec
-from lanelet2_traffic_light.core.sign_id.way_id_resolver import WayIdResolver
+from lanelet2_traffic_light.corelib.ir.traffic_light_ir import Node, TrafficLightSpec
+from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
 
 
 def _spec(way_id):
