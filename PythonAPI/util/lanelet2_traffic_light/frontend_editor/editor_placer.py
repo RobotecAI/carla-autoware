@@ -491,6 +491,12 @@ def _spawn_or_update(spec: PlacementSpec,
             )
             location = snapped_loc
             rotation = snapped_rot
+            # Phase 6 課題 A 追加修正: 歩行者用は snap source の親 attach baked-in
+            # Roll=±90 を伝播するとメッシュが倒れる (親 BP_PedestrianTrafficLight の
+            # TrafficLightPedestrian は default 向きで縦立ちのため)。Yaw のみ採用、
+            # Roll/Pitch=0 強制。
+            if spec.subtype == "red_green":
+                rotation = unreal.Rotator(roll=0.0, pitch=0.0, yaw=rotation.yaw)
         else:
             prefix_str = "/".join(p + "_*" for p in label_prefixes)
             unreal.log_warning(
