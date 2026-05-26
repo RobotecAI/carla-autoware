@@ -87,6 +87,101 @@ def test_unknown_subtype_skipped(tmp_path):
     assert len(report.warnings) == 1
 
 
+def test_placement_carries_subtype_from_traffic_light_spec():
+    """PlacementSpec.subtype が TrafficLightSpec.subtype と一致する。"""
+    from lanelet2_traffic_light.corelib.api import generate_placements
+    from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+    from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
+    from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
+    import os
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    transformer = MgrsTransformer(0.0, 0.0, 0.0)
+    placements, _, _ = generate_placements(fixture, PROFILE_JP, WayIdResolver(), transformer)
+    assert placements, "minimal.osm に traffic_light way が必要"
+    for p in placements:
+        assert p.subtype in ("red_yellow_green", "red_green"), \
+            f"unexpected subtype: {p.subtype}"
+
+
+def test_placement_carries_lat_lon_midpoint():
+    """PlacementSpec.lat/lon が TL の p0/p1 中点。"""
+    from lanelet2_traffic_light.corelib.api import generate_placements
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+    from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
+    from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
+    import os
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    tls, _ = parse_osm(fixture)
+    transformer = MgrsTransformer(0.0, 0.0, 0.0)
+    placements, _, _ = generate_placements(fixture, PROFILE_JP, WayIdResolver(), transformer)
+    tl_by_wayid = {tl.way_id: tl for tl in tls}
+    for p in placements:
+        tl = tl_by_wayid[p.source_way_id]
+        expected_lat = (tl.p0.lat + tl.p1.lat) / 2.0
+        expected_lon = (tl.p0.lon + tl.p1.lon) / 2.0
+        assert abs(p.lat - expected_lat) < 1e-9
+        assert abs(p.lon - expected_lon) < 1e-9
+
+
+def test_placement_carries_local_xy_midpoint():
+    from lanelet2_traffic_light.corelib.api import generate_placements
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+    from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
+    from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
+    import os
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    tls, _ = parse_osm(fixture)
+    transformer = MgrsTransformer(0.0, 0.0, 0.0)
+    placements, _, _ = generate_placements(fixture, PROFILE_JP, WayIdResolver(), transformer)
+    tl_by_wayid = {tl.way_id: tl for tl in tls}
+    for p in placements:
+        tl = tl_by_wayid[p.source_way_id]
+        expected_x = (tl.p0.local_x + tl.p1.local_x) / 2.0
+        expected_y = (tl.p0.local_y + tl.p1.local_y) / 2.0
+        assert abs(p.local_x - expected_x) < 1e-6
+        assert abs(p.local_y - expected_y) < 1e-6
+
+
+def test_placement_carries_mgrs_code_from_p0():
+    from lanelet2_traffic_light.corelib.api import generate_placements
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
+    from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
+    from lanelet2_traffic_light.corelib.sign_id.way_id_resolver import WayIdResolver
+    import os
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
+    tls, _ = parse_osm(fixture)
+    transformer = MgrsTransformer(0.0, 0.0, 0.0)
+    placements, _, _ = generate_placements(fixture, PROFILE_JP, WayIdResolver(), transformer)
+    tl_by_wayid = {tl.way_id: tl for tl in tls}
+    for p in placements:
+        tl = tl_by_wayid[p.source_way_id]
+        assert p.mgrs_code == tl.p0.mgrs_code
+
+
+def test_placement_ele_midpoint_both_present():
+    """ele が両端にあれば中点。pure-Python での中点計算ロジック検証。"""
+    from lanelet2_traffic_light.corelib.api import _compute_ele_midpoint
+    assert _compute_ele_midpoint(6.0, 8.0) == 7.0
+
+
+def test_placement_ele_p0_only():
+    from lanelet2_traffic_light.corelib.api import _compute_ele_midpoint
+    assert _compute_ele_midpoint(6.0, None) == 6.0
+
+
+def test_placement_ele_p1_only():
+    from lanelet2_traffic_light.corelib.api import _compute_ele_midpoint
+    assert _compute_ele_midpoint(None, 8.0) == 8.0
+
+
+def test_placement_ele_both_none():
+    from lanelet2_traffic_light.corelib.api import _compute_ele_midpoint
+    assert _compute_ele_midpoint(None, None) is None
+
+
 REAL_OSM = "/mnt/dsk0/wk0/CARLA/autoware_map/odaiba_autoware_map_2025_01_16/lanelet2_map.osm"
 
 

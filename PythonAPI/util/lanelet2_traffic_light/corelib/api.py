@@ -16,6 +16,17 @@ from lanelet2_traffic_light.corelib.ir.traffic_light_ir import (
 )
 
 
+def _compute_ele_midpoint(ele_p0, ele_p1):
+    """p0/p1 の ele の中点。片方 None なら他方、両方 None なら None。"""
+    if ele_p0 is not None and ele_p1 is not None:
+        return (ele_p0 + ele_p1) / 2.0
+    if ele_p0 is not None:
+        return ele_p0
+    if ele_p1 is not None:
+        return ele_p1
+    return None
+
+
 @dataclass
 class GenerationReport:
     parsed_traffic_lights: int = 0
@@ -86,6 +97,15 @@ def generate_placements(
 
         x_cm, y_cm, z_cm = transformer.local_to_unreal_cm(cx_m, cy_m, z_m)
 
+        # lanelet2 由来の代表点を計算 (p0/p1 中点)
+        lat_mid = (tl.p0.lat + tl.p1.lat) / 2.0
+        lon_mid = (tl.p0.lon + tl.p1.lon) / 2.0
+        local_x_mid = (tl.p0.local_x + tl.p1.local_x) / 2.0
+        local_y_mid = (tl.p0.local_y + tl.p1.local_y) / 2.0
+        ele_mid = _compute_ele_midpoint(tl.p0.ele, tl.p1.ele)
+        # mgrs_code は p0 を採用 (TL 両端の MGRS グリッドは通常同一)
+        mgrs_code = tl.p0.mgrs_code
+
         placements.append(PlacementSpec(
             sign_id=sign_id,
             actor_class_path=bp_path,
@@ -93,6 +113,13 @@ def generate_placements(
             rotation_deg=(0.0, 0.0, yaw_deg),
             group_relation_id=(group_for_tl.relation_id if group_for_tl else None),
             source_way_id=tl.way_id,
+            subtype=tl.subtype,
+            lat=lat_mid,
+            lon=lon_mid,
+            ele=ele_mid,
+            local_x=local_x_mid,
+            local_y=local_y_mid,
+            mgrs_code=mgrs_code,
         ))
         report.placements_created += 1
 
