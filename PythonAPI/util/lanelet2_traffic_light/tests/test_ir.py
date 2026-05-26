@@ -38,3 +38,54 @@ def test_node_accepts_explicit_ele():
     from lanelet2_traffic_light.corelib.ir.traffic_light_ir import Node
     n = Node(id=1, lat=35.0, lon=139.0, local_x=0.0, local_y=0.0, mgrs_code="54SUE", ele=6.083)
     assert n.ele == 6.083
+
+
+def test_placement_spec_has_subtype_field_default_empty():
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec
+    p = PlacementSpec(
+        sign_id="1",
+        actor_class_path="/Game/foo",
+        location_cm=(0.0, 0.0, 0.0),
+        rotation_deg=(0.0, 0.0, 0.0),
+    )
+    assert p.subtype == ""
+
+
+def test_placement_spec_has_lanelet2_fields_defaults():
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec
+    p = PlacementSpec(
+        sign_id="1",
+        actor_class_path="/Game/foo",
+        location_cm=(0.0, 0.0, 0.0),
+        rotation_deg=(0.0, 0.0, 0.0),
+    )
+    assert p.lat == 0.0
+    assert p.lon == 0.0
+    assert p.ele is None
+    assert p.local_x == 0.0
+    assert p.local_y == 0.0
+    assert p.mgrs_code == ""
+
+
+def test_placement_spec_accepts_lanelet2_fields():
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec
+    p = PlacementSpec(
+        sign_id="1",
+        actor_class_path="/Game/foo",
+        location_cm=(0.0, 0.0, 0.0),
+        rotation_deg=(0.0, 0.0, 0.0),
+        subtype="red_yellow_green",
+        lat=35.62,
+        lon=139.77,
+        ele=6.083,
+        local_x=89430.77,
+        local_y=43191.12,
+        mgrs_code="54SUE894431",
+    )
+    assert p.subtype == "red_yellow_green"
+    assert p.lat == 35.62
+    assert p.lon == 139.77
+    assert p.ele == 6.083
+    assert p.local_x == 89430.77
+    assert p.local_y == 43191.12
+    assert p.mgrs_code == "54SUE894431"

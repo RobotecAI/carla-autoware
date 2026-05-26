@@ -49,3 +49,11 @@ class PlacementSpec:
     rotation_deg: tuple[float, float, float]
     group_relation_id: Optional[int] = None
     source_way_id: int = 0
+    subtype: str = ""
+    # lanelet2 由来の代表点 (TL の p0/p1 中点)
+    lat: float = 0.0
+    lon: float = 0.0
+    ele: Optional[float] = None
+    local_x: float = 0.0
+    local_y: float = 0.0
+    mgrs_code: str = ""
