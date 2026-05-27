@@ -60,7 +60,6 @@ run_placement(os.environ.get("LANELET2_OSM_PATH", ""), limit={limit_expr})
 '''
 
 
-QUICK_RUN_SCRIPT = _build_run_script(5)
 FULL_RUN_SCRIPT = _build_run_script(None)
 
 
@@ -69,7 +68,7 @@ FULL_RUN_SCRIPT = _build_run_script(None)
 # ---------------------------------------------------------------------------
 
 def _register_menu_entries():
-    """LevelEditor.MainMenu.Tools にエントリ 2 つを追加。"""
+    """Register the Tool menu entries (Widget, Full Run) under LevelEditor.MainMenu.Tools."""
     menus = unreal.ToolMenus.get()
     main_menu = menus.find_menu("LevelEditor.MainMenu.Tools")
     if main_menu is None:
@@ -78,15 +77,15 @@ def _register_menu_entries():
 
     section_name = "LaneletTrafficLight"
 
-    # Entry 1: open the Editor Utility Widget (Phase 3.5 の成果物)
+    # Entry 1: open the Editor Utility Widget (GUI for OSM path + placement).
     entry_widget = unreal.ToolMenuEntry(
         name="LaneletTL_OpenWidget",
         type=unreal.MultiBlockType.MENU_ENTRY,
     )
     entry_widget.set_label("Generate Traffic Lights from lanelet2... (Widget)")
     entry_widget.set_tool_tip(
-        "Open the EUW_LaneletTrafficLight widget. "
-        "Requires the asset to be created first (Phase 3.5)."
+        "Open the EUW_LaneletTrafficLight widget to enter an OSM path and run "
+        "placement from a GUI."
     )
     entry_widget.set_string_command(
         type=unreal.ToolMenuStringCommandType.PYTHON,
@@ -100,34 +99,18 @@ def _register_menu_entries():
     )
     main_menu.add_menu_entry(section_name, entry_widget)
 
-    # Entry 2: Quick-Run (Phase 3.5 完了前のスモークテスト用)
-    entry_quick = unreal.ToolMenuEntry(
-        name="LaneletTL_QuickRun",
-        type=unreal.MultiBlockType.MENU_ENTRY,
-    )
-    entry_quick.set_label("Generate Traffic Lights from lanelet2 (Quick Run, first 5)")
-    entry_quick.set_tool_tip(
-        "Parses the default Odaiba lanelet2 and spawns the first 5 traffic "
-        "lights as a smoke test. Useful before the EUW is created."
-    )
-    entry_quick.set_string_command(
-        type=unreal.ToolMenuStringCommandType.PYTHON,
-        custom_type=unreal.Name(""),
-        string=QUICK_RUN_SCRIPT.strip(),
-    )
-    main_menu.add_menu_entry(section_name, entry_quick)
-
-    # Entry 3: Full-Run (Phase 4.2: 全件配置)
-    # 522 件配置するため数分かかる。レベル保存は明示的に Ctrl+S が必要。
+    # Entry 2: Full-Run (places all parsed traffic lights).
+    # Takes a few minutes for large maps. Save the level with Ctrl+S afterwards.
     entry_full = unreal.ToolMenuEntry(
         name="LaneletTL_FullRun",
         type=unreal.MultiBlockType.MENU_ENTRY,
     )
     entry_full.set_label("Generate Traffic Lights from lanelet2 (Full Run, all)")
     entry_full.set_tool_tip(
-        "Parses the default Odaiba lanelet2 and spawns ALL parsed traffic "
-        "lights (~522 in Odaiba). Takes a few minutes. Save the level "
-        "manually with Ctrl+S after verifying the result."
+        "Parse the lanelet2 OSM set via the LANELET2_OSM_PATH environment "
+        "variable and spawn ALL parsed traffic lights into the current level. "
+        "Takes a few minutes for large maps. Save the level with Ctrl+S "
+        "after verifying the result."
     )
     entry_full.set_string_command(
         type=unreal.ToolMenuStringCommandType.PYTHON,
