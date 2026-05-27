@@ -25,7 +25,7 @@ def test_generate_placements_from_minimal(minimal_osm_path):
 
 
 def test_z_uses_subtype_pole_height(minimal_osm_path):
-    """Phase 4.2: 各 placement の Z は profile.pole_height_m(subtype) を反映する。"""
+    """Phase 4.2: Z of each placement reflects profile.pole_height_m(subtype)."""
     transformer = MgrsTransformer(0.0, 0.0, 0.0, x_sign=+1, y_sign=-1)
     placements, _, _ = generate_placements(
         osm_path=minimal_osm_path,
@@ -33,11 +33,11 @@ def test_z_uses_subtype_pole_height(minimal_osm_path):
         sign_id_resolver=WayIdResolver(),
         transformer=transformer,
     )
-    # minimal フィクスチャの subtype は parser/fixture 側に依存するが、いずれにせよ
-    # subtype 別 pole_height が反映されていることが重要。
-    # 車両用と歩行者用が混在していれば Z 値が複数現れる、単一なら 1 種類。
+    # The subtype of the minimal fixture depends on the parser/fixture side, but what
+    # matters is that the subtype-specific pole_height is reflected.
+    # If vehicle and pedestrian subtypes are mixed, multiple Z values appear; otherwise one.
     zs = {round(p.location_cm[2], 2) for p in placements}
-    # subtype 別の pole_height (cm) のいずれかに完全一致するはず
+    # Should exactly match one of the subtype-specific pole_height values (cm).
     expected_zs = {
         PROFILE_JP.pole_height_m("red_yellow_green") * 100.0,
         PROFILE_JP.pole_height_m("red_green") * 100.0,
@@ -60,7 +60,7 @@ def test_generate_placements_collision_detected(minimal_osm_path):
 
 
 def test_unknown_subtype_skipped(tmp_path):
-    # 未知 subtype の way だけのフィクスチャを動的生成
+    # Dynamically create a fixture containing only a way with an unknown subtype.
     p = tmp_path / "unknown.osm"
     p.write_text("""<?xml version='1.0'?>
 <osm version='0.6'>
@@ -88,7 +88,7 @@ def test_unknown_subtype_skipped(tmp_path):
 
 
 def test_placement_carries_subtype_from_traffic_light_spec():
-    """PlacementSpec.subtype が TrafficLightSpec.subtype と一致する。"""
+    """PlacementSpec.subtype matches TrafficLightSpec.subtype."""
     from lanelet2_traffic_light.corelib.api import generate_placements
     from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
     from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
@@ -97,14 +97,14 @@ def test_placement_carries_subtype_from_traffic_light_spec():
     fixture = os.path.join(os.path.dirname(__file__), "fixtures", "minimal.osm")
     transformer = MgrsTransformer(0.0, 0.0, 0.0)
     placements, _, _ = generate_placements(fixture, PROFILE_JP, WayIdResolver(), transformer)
-    assert placements, "minimal.osm に traffic_light way が必要"
+    assert placements, "minimal.osm must contain at least one traffic_light way"
     for p in placements:
         assert p.subtype in ("red_yellow_green", "red_green"), \
             f"unexpected subtype: {p.subtype}"
 
 
 def test_placement_carries_lat_lon_midpoint():
-    """PlacementSpec.lat/lon が TL の p0/p1 中点。"""
+    """PlacementSpec.lat/lon is the midpoint of TL p0/p1."""
     from lanelet2_traffic_light.corelib.api import generate_placements
     from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
     from lanelet2_traffic_light.corelib.profile.profile_jp import PROFILE_JP
@@ -162,7 +162,7 @@ def test_placement_carries_mgrs_code_from_p0():
 
 
 def test_placement_ele_midpoint_both_present():
-    """ele が両端にあれば中点。pure-Python での中点計算ロジック検証。"""
+    """When ele is present at both endpoints, the result is the midpoint."""
     from lanelet2_traffic_light.corelib.api import _compute_ele_midpoint
     assert _compute_ele_midpoint(6.0, 8.0) == 7.0
 
@@ -188,7 +188,7 @@ REAL_OSM = "/mnt/dsk0/wk0/CARLA/autoware_map/odaiba_autoware_map_2025_01_16/lane
 @pytest.mark.skipif(not os.path.exists(REAL_OSM),
                     reason="real Odaiba lanelet2 not available in CI")
 def test_real_odaiba_osm_parses_and_generates():
-    """実 Odaiba .osm が解析でき、それなりの件数の PlacementSpec が返ること。"""
+    """Real Odaiba .osm can be parsed and returns a reasonable number of PlacementSpecs."""
     transformer = MgrsTransformer(0.0, 0.0, 0.0, x_sign=+1, y_sign=-1)
     placements, groups, report = generate_placements(
         osm_path=REAL_OSM,
@@ -196,13 +196,13 @@ def test_real_odaiba_osm_parses_and_generates():
         sign_id_resolver=WayIdResolver(),
         transformer=transformer,
     )
-    # 件数の桁感だけアサート（実値は phase0_validation.md と突合）
+    # Assert only the order of magnitude of counts (exact values cross-checked with phase0_validation.md).
     assert report.parsed_traffic_lights > 10
     assert report.parsed_groups > 0
     assert len(placements) <= report.parsed_traffic_lights
-    # SignID 集合が一意
+    # SignID set must be unique.
     assert len({p.sign_id for p in placements}) == len(placements)
-    # 座標範囲が異常でないこと（Odaiba の半径 km スケール想定）
+    # Coordinate range must be reasonable (Odaiba radius on the order of km).
     for p in placements:
         x, y, z = p.location_cm
         assert -1e8 < x < 1e8

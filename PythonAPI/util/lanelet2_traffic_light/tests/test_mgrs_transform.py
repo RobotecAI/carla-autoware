@@ -3,7 +3,7 @@ from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransform
 
 
 def test_local_xy_to_unreal_cm_simple():
-    """Odaiba 風: offset_y で y を反転。"""
+    """Odaiba-style: negate Y via offset_y."""
     t = MgrsTransformer(offset_x_m=10.0, offset_y_m=20.0, offset_z_m=0.0,
                         x_sign=+1, y_sign=-1)
     # local=(15m, 30m), height=4.5m
@@ -17,7 +17,7 @@ def test_local_xy_to_unreal_cm_simple():
 
 
 def test_origin_at_offset_maps_to_zero():
-    """local 座標が offset 値と同じなら Unreal は原点。"""
+    """When local coordinates equal the offset values, the Unreal position is the origin."""
     t = MgrsTransformer(offset_x_m=100.0, offset_y_m=200.0, offset_z_m=0.0,
                         x_sign=+1, y_sign=-1)
     x, y, z = t.local_to_unreal_cm(100.0, 200.0, 0.0)
@@ -25,7 +25,7 @@ def test_origin_at_offset_maps_to_zero():
 
 
 def test_y_sign_positive_variant():
-    """y_sign=+1 のケース (他マップ用の余地)。"""
+    """y_sign=+1 case (reserved for other map configurations)."""
     t = MgrsTransformer(offset_x_m=0.0, offset_y_m=0.0, offset_z_m=0.0,
                         x_sign=+1, y_sign=+1)
     x, y, _ = t.local_to_unreal_cm(10.0, 20.0, 0.0)
@@ -34,7 +34,7 @@ def test_y_sign_positive_variant():
 
 
 def test_x_sign_minus_one():
-    """x_sign=-1 のケース。"""
+    """x_sign=-1 case."""
     t = MgrsTransformer(offset_x_m=0.0, offset_y_m=0.0, offset_z_m=0.0,
                         x_sign=-1, y_sign=-1)
     x, y, _ = t.local_to_unreal_cm(10.0, 20.0, 0.0)
@@ -43,13 +43,13 @@ def test_x_sign_minus_one():
 
 
 def test_odaiba_realistic_values():
-    """Phase 0 で実機検証した Odaiba way_id=6621 のケース。"""
+    """Odaiba way_id=6621 case validated on real hardware during Phase 0."""
     t = MgrsTransformer(offset_x_m=92008.5, offset_y_m=45335.1, offset_z_m=0.0,
                         x_sign=+1, y_sign=-1)
     # way_id=6621 midpoint
     x, y, z = t.local_to_unreal_cm(local_x_m=89133.499, local_y_m=42693.062,
                                    height_m=12.3)
-    # Predicted: (-287500.1, +264203.8, +1230.0)
+    # Expected: (-287500.1, +264203.8, +1230.0)
     assert x == pytest.approx(-287500.1, abs=0.5)
     assert y == pytest.approx(+264203.8, abs=0.5)
     assert z == pytest.approx(+1230.0, abs=0.5)

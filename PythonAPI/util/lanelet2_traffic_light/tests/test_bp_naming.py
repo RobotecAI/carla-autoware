@@ -1,4 +1,4 @@
-"""bp_naming.derive_subtype_bp_path のテスト。pure Python なので unreal 不要。"""
+"""Tests for bp_naming.derive_subtype_bp_path. Pure Python — no Unreal dependency."""
 import pytest
 
 from lanelet2_traffic_light.frontend_editor.bp_naming import (

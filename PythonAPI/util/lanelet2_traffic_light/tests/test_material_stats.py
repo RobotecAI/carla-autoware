@@ -1,7 +1,8 @@
-"""material_stats.aggregate_material_stats のユニットテスト。
+"""Unit tests for material_stats.aggregate_material_stats.
 
-editor_placer._collect_pedestrian_mesh_materials から切り出した pure-Python
-集計関数。unreal 依存無しで unit test 可能にするのが目的。
+A pure-Python aggregation function extracted from
+editor_placer._collect_pedestrian_mesh_materials so it can be unit-tested
+without any Unreal dependency.
 """
 
 
@@ -26,7 +27,7 @@ def test_aggregate_single_actor():
 
 
 def test_aggregate_groups_by_mesh_and_elements():
-    """同じ (mesh, elements) は count をインクリメント。"""
+    """Identical (mesh, elements) pairs increment the count."""
     from lanelet2_traffic_light.frontend_editor.material_stats import aggregate_material_stats
     rows = aggregate_material_stats([
         ("Scene_805", ("TrafficLightsWalk", "Frame")),
@@ -34,7 +35,7 @@ def test_aggregate_groups_by_mesh_and_elements():
         ("Scene_805", ("TrafficLightsWalk", "Frame")),
         ("Scene_812", ("TrafficLightsWalk", "Frame", "TrafficLightsStop")),
     ])
-    # 順序: count 降順、tie は mesh アルファベット順
+    # Order: count descending; ties broken by mesh name alphabetically.
     assert rows == [
         {
             "mesh": "Scene_805",
@@ -52,13 +53,13 @@ def test_aggregate_groups_by_mesh_and_elements():
 
 
 def test_aggregate_distinguishes_element_order():
-    """同じ mesh でも element 順序が違えば別エントリ。"""
+    """Same mesh with different element order produces separate entries."""
     from lanelet2_traffic_light.frontend_editor.material_stats import aggregate_material_stats
     rows = aggregate_material_stats([
         ("Scene_999", ("A", "B")),
         ("Scene_999", ("B", "A")),
     ])
-    # 別エントリとして count=1 が 2 件
+    # Two separate entries each with count=1.
     counts = sorted(r["count"] for r in rows)
     assert counts == [1, 1]
     elements = sorted([r["elements"] for r in rows])
@@ -71,6 +72,6 @@ def test_aggregate_same_mesh_different_meshes_separate():
         ("Scene_A", ("X",)),
         ("Scene_B", ("X",)),
     ])
-    # 同じ elements でも mesh が違えば別エントリ
+    # Even with identical elements, different meshes are separate entries.
     meshes = sorted(r["mesh"] for r in rows)
     assert meshes == ["Scene_A", "Scene_B"]

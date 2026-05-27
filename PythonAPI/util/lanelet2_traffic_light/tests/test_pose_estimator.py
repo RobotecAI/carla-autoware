@@ -17,14 +17,14 @@ def test_center_is_midpoint():
 
 
 def test_horizontal_way_yaw_zero_minus_90():
-    # way が +X 方向: dx=10, dy=0 -> atan2(-0, 10) = 0, +(-90) = -90
+    # way in +X direction: dx=10, dy=0 -> atan2(-0, 10) = 0, +(-90) = -90
     spec = _spec((0.0, 0.0), (10.0, 0.0))
     _, _, yaw = estimate_center_and_yaw(spec, yaw_offset_deg=-90.0)
     assert yaw == pytest.approx(-90.0)
 
 
 def test_vertical_way_yaw_minus_180():
-    # way が lanelet2 +Y 方向 (Unreal では -Y): dx=0, dy=10
+    # way in lanelet2 +Y direction (Unreal -Y): dx=0, dy=10
     # atan2(-10, 0) = -90deg, +(-90) = -180 deg
     spec = _spec((0.0, 0.0), (0.0, 10.0))
     _, _, yaw = estimate_center_and_yaw(spec, yaw_offset_deg=-90.0)

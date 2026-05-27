@@ -1,4 +1,4 @@
-"""snap_stats.MeshZStats / compute_z_stats のテスト。pure Python なので unreal 不要。"""
+"""Tests for snap_stats.MeshZStats / compute_z_stats. Pure Python — no Unreal dependency."""
 import pytest
 
 from lanelet2_traffic_light.frontend_editor.snap_stats import (
@@ -26,7 +26,7 @@ def test_simple_sequence():
     assert s.n == 12
     assert s.z_min == 1
     assert s.z_max == 12
-    # index 法: n//2=6 → zs[6]=7, n//4=3 → zs[3]=4, 3n//4=9 → zs[9]=10
+    # Index method: n//2=6 → zs[6]=7, n//4=3 → zs[3]=4, 3n//4=9 → zs[9]=10
     assert s.z_median == 7
     assert s.z_q25 == 4
     assert s.z_q75 == 10
@@ -41,15 +41,15 @@ def test_unsorted_input():
 def test_iqr_and_tukey():
     s = MeshZStats(n=10, z_min=0, z_max=100, z_median=50, z_q25=20, z_q75=80)
     assert s.iqr == 60
-    # tukey_low = 20 - 1.5*60 = -70, tukey_high = 80 + 1.5*60 = 170
+    # tukey_low = 20 - 1.5*60 = -70, tukey_high = 80 + 1.5*60 = 170  (Tukey fences)
     assert s.tukey_low == -70
     assert s.tukey_high == 170
 
 
 def test_tukey_excludes_outliers():
-    """Tukey 範囲外のサンプルを除外できることを確認する用法サンプル。"""
-    # 内側: 100-200、外側: 1 件 1000 (外れ値)
+    """Usage example: samples outside the Tukey fence can be filtered out."""
+    # Inliers: 100-200; outlier: 1000 (one sample)
     zs = [100, 110, 120, 130, 150, 170, 180, 190, 200, 1000]
     s = compute_z_stats(zs)
-    # 1000 は tukey_high より上にあるはず
+    # 1000 should be above tukey_high.
     assert 1000 > s.tukey_high
