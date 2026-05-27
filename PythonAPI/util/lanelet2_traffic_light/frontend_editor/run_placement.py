@@ -118,3 +118,29 @@ def run_placement(osm_path, limit=None):
     )
     unreal.log(f"[lanelet2_tl] full report file: {report_path}")
     return preport
+
+
+def run_placement_and_summarize(osm_path, limit=None):
+    """Run placement and return a one-line summary string for UI display (EUW).
+
+    Thin wrapper around run_placement() that turns the PlacementReport into a
+    short string suitable for an Editor Utility Widget status label. Intended to
+    be called as a single expression via PythonScriptLibrary in EVALUATE mode so
+    the returned string can be shown in the widget.
+
+    Args:
+        osm_path: lanelet2 .osm file path.
+        limit: place only the first `limit` placements when an int; all when None.
+
+    Returns:
+        A one-line summary string (also when aborted).
+    """
+    report = run_placement(osm_path, limit)
+    if report is None:
+        return "Aborted: invalid OSM path (see Output Log)."
+    return (
+        f"Done: created={report.created} updated={report.updated} "
+        f"snap_skipped={len(report.snap_skipped)} failed={len(report.failed)} "
+        f"unused_meshes={len(report.unused_existing_meshes)} "
+        f"groups={report.groups_created}"
+    )
