@@ -1,25 +1,25 @@
-"""歩行者用メッシュの Material 構成集計 (Phase 6 課題 D)。
+"""Aggregation of Material composition for pedestrian meshes (Phase 6 issue D).
 
-editor_placer._collect_pedestrian_mesh_materials から切り出した pure-Python
-集計関数。unreal 依存無しで unit test 可能にするのが目的。
+Pure-Python aggregation function extracted from editor_placer._collect_pedestrian_mesh_materials.
+Designed to be unit-testable without the unreal dependency.
 """
 from collections import Counter
 
 
 def aggregate_material_stats(actor_records):
-    """(mesh_name, elements_tuple) を集計し、頻度順のレコードリストを返す。
+    """Aggregate (mesh_name, elements_tuple) entries and return a frequency-sorted list of records.
 
     Args:
         actor_records: [(mesh_name: str, elements: tuple[str, ...]), ...]
-            各 entry は 1 actor に対応。mesh_name は StaticMesh アセット名
-            (例 "Scene_805")、elements は Material element 名の tuple (順序保持)。
+            Each entry corresponds to one actor. mesh_name is the StaticMesh asset name
+            (e.g. "Scene_805"); elements is an order-preserving tuple of Material element names.
 
     Returns:
         [
             {"mesh": str, "num_elements": int, "elements": tuple, "count": int},
             ...
         ]
-        順序: count 降順、tie は mesh アルファベット順 + elements 辞書順。
+        Order: descending by count; ties broken by mesh alphabetical order then elements lexicographic order.
     """
     counter = Counter(actor_records)
     rows = []

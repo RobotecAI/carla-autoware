@@ -1,14 +1,14 @@
-"""snap モードで使う既存メッシュ Z 座標の分布統計データ構造と計算。
+"""Data structures and computation for the Z-coordinate distribution statistics of existing meshes used in snap mode.
 
-unreal モジュールに依存しない pure Python。pytest からテスト可能。
+No dependency on the unreal module (pure Python). Testable from pytest.
 
-Phase 4.2 追加: マップ非依存に Z 範囲判定するため、Full Run 開始時に
-既存メッシュの World Z を集めて統計化、Tukey の 1.5 IQR 規則で外れ値を
-除外する範囲 (z_low, z_high) を導出する。
+Added in Phase 4.2: at the start of a Full Run, World Z values of existing meshes are
+collected and summarized to derive an outlier-free range (z_low, z_high) using
+Tukey's 1.5 IQR rule, enabling map-independent Z range detection.
 
-これにより:
-- 別マップで Z 基準が違っても (海抜/楕円体ズレ等) 自動適応
-- subtype 別 pole_height の固定値設定不要 (profile 値はフォールバックとして残す)
+Benefits:
+- Auto-adapts even when the Z reference differs between maps (e.g. sea level / ellipsoid offset)
+- Eliminates the need for per-subtype fixed pole_height values (profile values remain as fallback)
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -16,11 +16,12 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class MeshZStats:
-    """既存メッシュの World Z 座標分布の統計。
+    """Statistics of the World Z coordinate distribution for existing meshes.
 
-    `tukey_low` / `tukey_high` は外れ値検出の標準手法 (Tukey の 1.5 IQR 規則)
-    で算出された範囲。この外側に位置する mesh は「立体駐車場の上の信号機」
-    のような外れ値とみなして snap target から除外する。
+    `tukey_low` / `tukey_high` is the range computed by the standard outlier
+    detection method (Tukey's 1.5 IQR rule). Meshes outside this range are
+    treated as outliers (e.g. traffic lights on top of a multi-story car park)
+    and excluded from snap targets.
     """
     n: int
     z_min: float
@@ -43,10 +44,10 @@ class MeshZStats:
 
 
 def compute_z_stats(zs) -> Optional[MeshZStats]:
-    """Z 値の iterable から MeshZStats を計算する。空なら None を返す。
+    """Compute MeshZStats from an iterable of Z values. Returns None if the iterable is empty.
 
-    四分位数は素朴な index 法 (n//4, n//2, 3n//4)。サンプル数が十分多ければ
-    補間版との差は無視できる。
+    Quartiles are computed with a simple index method (n//4, n//2, 3n//4).
+    The difference from the interpolated version is negligible for sufficiently large samples.
     """
     zs_sorted = sorted(zs)
     n = len(zs_sorted)
