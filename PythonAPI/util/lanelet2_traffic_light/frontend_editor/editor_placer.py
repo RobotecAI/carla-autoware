@@ -805,6 +805,8 @@ def _write_full_run_report(report: "PlacementReport", path: str,
         f.write(f"unused_meshes    : {len(report.unused_existing_meshes)}\n")
         f.write(f"groups_created   : {report.groups_created}\n")
         f.write(f"groups_updated   : {report.groups_updated}\n")
+        f.write(f"placed           : {report.created + report.updated}\n")
+        f.write(f"pedestrian_mesh_materials: {len(report.pedestrian_material_stats)}\n")
         f.write("\n")
 
         # 2. Z STATS
