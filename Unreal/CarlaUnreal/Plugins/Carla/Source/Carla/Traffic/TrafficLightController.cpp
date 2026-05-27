@@ -102,13 +102,23 @@ bool UTrafficLightController::IsCycleFinished() const
 void UTrafficLightController::SetTrafficLightsState(ETrafficLightState NewState)
 {
   SetCurrentLightState(NewState);
+  // Guard against stale/null entries: dynamically-built groups can hold
+  // references to components whose actors were destroyed (the UPROPERTY array
+  // is then nulled by GC). Mirrors the null-check in
+  // UTrafficLightComponent::SetLightState's Vehicles loop.
   for(auto *Light : TrafficLights)
   {
-    Light->SetLightState(NewState);
+    if (Light != nullptr)
+    {
+      Light->SetLightState(NewState);
+    }
   }
   for(FCarlaActor* Light : TrafficLightCarlaActors)
   {
-    Light->SetTrafficLightState(NewState);
+    if (Light != nullptr)
+    {
+      Light->SetTrafficLightState(NewState);
+    }
   }
 }
 
