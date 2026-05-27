@@ -1,11 +1,11 @@
-"""CARLA UE5 Editor 起動時に読み込まれる Python 初期化フック。
+"""Python initialisation hook loaded by the CARLA UE5 Editor at startup.
 
-UE5 は Editor 起動時に Project_Root/Content/Python/init_unreal.py を
-自動的に実行する。ここで Tools メニューに lanelet2_traffic_light
-ユーティリティへのアクセスを追加する。
+UE5 automatically executes Project_Root/Content/Python/init_unreal.py when the
+Editor starts.  This module adds the lanelet2_traffic_light utility to the
+Tools menu via an Editor Utility Widget (EUW) entry.
 
-設計仕様: docs/superpowers/specs/2026-05-20-lanelet2-traffic-light-design.md
-Phase 0 知見: PythonAPI/util/lanelet2_traffic_light/docs/phase0_validation.md
+Design spec: docs/superpowers/specs/2026-05-20-lanelet2-traffic-light-design.md
+Phase 0 notes: PythonAPI/util/lanelet2_traffic_light/docs/phase0_validation.md
 """
 import os
 import sys
@@ -13,10 +13,10 @@ import sys
 import unreal
 
 
-# lanelet2_traffic_light パッケージへのパスを sys.path に追加。
-# Project root から見ると PythonAPI/util/lanelet2_traffic_light がパッケージ本体。
+# Add the lanelet2_traffic_light package parent directory to sys.path.
+# Relative to the project root: PythonAPI/util/ is the parent of the package.
 def _add_package_path_to_sys_path():
-    project_dir = unreal.Paths.project_dir()  # 例: ".../Unreal/CarlaUnreal/"
+    project_dir = unreal.Paths.project_dir()  # e.g. ".../Unreal/CarlaUnreal/"
     package_parent = unreal.Paths.convert_relative_path_to_full(
         os.path.join(project_dir, "..", "..", "PythonAPI", "util")
     )
@@ -28,15 +28,10 @@ def _add_package_path_to_sys_path():
 _add_package_path_to_sys_path()
 
 
-# lanelet2 OSM file for Quick/Full Run, set via LANELET2_OSM_PATH env var (required).
-# No hard-coded fallback: an unset/missing path is reported at Run time.
-DEFAULT_OSM_PATH = os.environ.get("LANELET2_OSM_PATH", "")
-
 # Editor Utility Widget for GUI-based placement (Phase 7). Lives in the T4 plugin content.
 EUW_ASSET_PATH = "/T4/Lanelet2TrafficLight/EUW_LaneletTrafficLight.EUW_LaneletTrafficLight"
 
 
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Menu registration
 # ---------------------------------------------------------------------------

@@ -22,7 +22,7 @@ PythonAPI/util/lanelet2_traffic_light/
 
 ## Prerequisites
 
-Set the environment variable `LANELET2_OSM_PATH` to the path of your lanelet2 OSM file **before** launching the UE5 Editor. Quick Run and Full Run will fail with an error if this variable is unset or the file does not exist.
+Set the environment variable `LANELET2_OSM_PATH` to the path of your lanelet2 OSM file **before** launching the UE5 Editor. The value is used as the default path in the EUW input field and is also read by the command-line entry point.
 
 ```bash
 export LANELET2_OSM_PATH=/path/to/lanelet2_map.osm
@@ -30,24 +30,13 @@ export LANELET2_OSM_PATH=/path/to/lanelet2_map.osm
 
 ## Running from the UE5 Editor
 
-### Quick Run (first 5 traffic lights)
+The Tools menu exposes a single entry that opens the Editor Utility Widget (EUW).
 
 1. Open the target level (e.g. `Odaiba.umap`).
-2. **Tools** menu → **Generate Traffic Lights from lanelet2 (Quick Run, first 5)**.
-3. The first 5 traffic lights from the OSM file specified by `LANELET2_OSM_PATH` are spawned.
-
-### Full Run (all traffic lights)
-
-1. Open the target level.
-2. **Tools** menu → **Generate Traffic Lights from lanelet2 (Full Run)**.
-3. All traffic lights from the OSM file are spawned and SignIDs are assigned.
-
-### EUW (Editor Utility Widget) — GUI mode
-
-1. Open the Widget from:
-   `/T4/Lanelet2TrafficLight/EUW_LaneletTrafficLight`
-2. Enter the OSM path in the GUI text field, then click **Run**.
-3. This is equivalent to Full Run but allows path override without modifying the environment variable.
+2. **Tools** menu → **Generate Traffic Lights from lanelet2...**.
+3. The EUW opens. The OSM path input field is pre-filled with the value of `LANELET2_OSM_PATH` (empty if the variable is unset).
+4. Confirm or edit the OSM path, then click **Full Run**.
+5. All traffic lights from the OSM file are spawned and SignIDs are assigned. If the path is unset or the file does not exist, an error dialog is shown.
 
 > **Note:** `BP_OdaibaVehicleTL` and `BP_OdaibaPedestrianTL` must exist in the level for actors to be spawned.
 
