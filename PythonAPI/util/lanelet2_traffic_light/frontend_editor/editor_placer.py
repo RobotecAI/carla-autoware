@@ -1,11 +1,11 @@
-"""UE5 Editor Python フロントエンド。
+"""UE5 Editor Python frontend.
 
-core パッケージが出力した `PlacementSpec` をレベル内の Actor 配置に変換する。
-`unreal` モジュールを import する唯一のファイル。
+Converts `PlacementSpec` output from the core package into Actor placements in the level.
+This is the only file that imports the `unreal` module.
 
-設計仕様: docs/superpowers/specs/2026-05-20-lanelet2-traffic-light-design.md
-実装プラン: docs/superpowers/plans/2026-05-20-lanelet2-traffic-light.md
-Phase 0 知見: PythonAPI/util/lanelet2_traffic_light/docs/phase0_validation.md
+Design spec: docs/superpowers/specs/2026-05-20-lanelet2-traffic-light-design.md
+Implementation plan: docs/superpowers/plans/2026-05-20-lanelet2-traffic-light.md
+Phase 0 findings: PythonAPI/util/lanelet2_traffic_light/docs/phase0_validation.md
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -19,38 +19,38 @@ from lanelet2_traffic_light.frontend_editor.snap_stats import (
 )
 
 
-# Phase 5 ② 以前のデフォルト Group BP path (現在は使われない、
-# `_place_groups()` に引数で渡される map 別の派生 BP を使う)。
-# 互換性のため定数自体は残すが、参照は廃止。
+# Default Group BP path prior to Phase 5-2 (no longer used;
+# per-map derived BP passed via argument to `_place_groups()`).
+# The constant itself is kept for compatibility, but references are deprecated.
 BP_TRAFFIC_LIGHT_GROUP_PATH = "/Carla/Blueprints/TrafficLight/BP_TrafficLightGroup.BP_TrafficLightGroup_C"
 
 
 @dataclass
 class PlacementReport:
-    """place_from_specs() の実行結果サマリ。"""
+    """Execution result summary of place_from_specs()."""
     created: int = 0
     updated: int = 0
-    failed: list = field(default_factory=list)  # (sign_id, reason_str) のタプル
-    # snap_to_existing_mesh=True で対応する既存メッシュが見つからずに配置を
-    # skip した spec のリスト。Odaiba.umap の 3D 街並みカバー範囲外の信号機
-    # (lanelet2 は東京湾岸全域カバーするがメッシュは Odaiba 中心のみ) が
-    # ここに入る。
+    failed: list = field(default_factory=list)  # list of (sign_id, reason_str) tuples
+    # Specs skipped because no matching existing mesh was found when
+    # snap_to_existing_mesh=True. Traffic lights outside the 3D cityscape
+    # coverage of Odaiba.umap end up here (lanelet2 covers the entire Tokyo bay
+    # area, but meshes only cover the Odaiba center area).
     snap_skipped: list = field(default_factory=list)  # (sign_id, target_xyz_cm)
-    snap_skipped_records: list = field(default_factory=list)  # dict 形式 (key=value 出力用)
-    # 逆方向の漏れ: Odaiba メッシュとしては存在するが、どの lanelet2 way とも
-    # マッチしなかった既存信号機メッシュ (label, (x_cm, y_cm, z_cm)) のリスト。
-    # 撤去された信号機の残置、マップ設計時の冗長、lanelet2 編集漏れ等の
-    # 検出に使える (Phase 4.2 追加)。
+    snap_skipped_records: list = field(default_factory=list)  # dict form (for key=value output)
+    # Reverse mismatch: existing signal meshes present as Odaiba meshes but not
+    # matched to any lanelet2 way — list of (label, (x_cm, y_cm, z_cm)).
+    # Useful for detecting leftover meshes from removed signals, redundant map
+    # design, or missing lanelet2 edits (added in Phase 4.2).
     unused_existing_meshes: list = field(default_factory=list)
-    # 配置成功した spec の snap 詳細レコード。レポートファイル出力用。
-    # 各要素は dict: {sign_id, was_created, target_label, xy_dist_cm, mesh_name}
+    # Snap detail records for successfully placed specs (for report file output).
+    # Each element is a dict: {sign_id, was_created, target_label, xy_dist_cm, mesh_name}
     placed_records: list = field(default_factory=list)
-    # Z 統計のスナップショット (レポート出力用)
+    # Snapshot of Z statistics (for report output)
     z_stats_snapshot: dict = field(default_factory=dict)
     groups_created: int = 0
     groups_updated: int = 0
     pedestrian_material_stats: list = field(default_factory=list)
-    # aggregate_material_stats の返り値リストを格納
+    # stores the return value list of aggregate_material_stats
 
 
 # ---------------------------------------------------------------------------
@@ -58,31 +58,31 @@ class PlacementReport:
 # ---------------------------------------------------------------------------
 
 def _get_editor_world():
-    """現在エディタで開いているワールドを取得する。
+    """Return the world currently open in the editor.
 
-    UE5.5+ では EditorLevelLibrary.get_editor_world() が deprecated になったため、
-    UnrealEditorSubsystem 経由を優先し、失敗した場合のみ旧 API にフォールバックする。
+    In UE5.5+, EditorLevelLibrary.get_editor_world() is deprecated, so
+    UnrealEditorSubsystem is preferred; the legacy API is used as fallback.
     """
     subsys = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
     if subsys is not None and hasattr(subsys, "get_editor_world"):
         return subsys.get_editor_world()
-    # フォールバック: UE5.4 以前の環境向け
+    # Fallback: for environments prior to UE5.4
     return unreal.EditorLevelLibrary.get_editor_world()
 
 
 def _resolve_soft_object(soft_ref):
-    """TSoftObjectPtr / SoftObjectPath を解決して UObject を返す。
+    """Resolve a TSoftObjectPtr / SoftObjectPath and return the UObject.
 
-    unreal Python では TSoftObjectPtr がそのまま UObject として振る舞う場合と、
-    SoftObjectPath として届く場合の両方がある。いずれにも対応する。
+    In unreal Python, a TSoftObjectPtr may behave directly as a UObject or
+    may arrive as a SoftObjectPath. Both cases are handled here.
     """
     if soft_ref is None:
         return None
-    # SoftObjectPath の場合はパス文字列を取り出して load する
+    # For SoftObjectPath, extract the path string and load it
     if isinstance(soft_ref, unreal.SoftObjectPath):
         path = soft_ref.get_path_name() if hasattr(soft_ref, "get_path_name") else str(soft_ref)
         return unreal.EditorAssetLibrary.load_asset(path)
-    # 既に解決済み UObject (TSoftObjectPtr が自動解決されたケース) はそのまま返す
+    # Already a resolved UObject (TSoftObjectPtr auto-resolved case) — return as-is
     try:
         if hasattr(soft_ref, "get_path_name"):
             return soft_ref
@@ -92,21 +92,21 @@ def _resolve_soft_object(soft_ref):
 
 
 def get_world_mgrs_data() -> MgrsTransformer:
-    """現在開いているレベルの WorldSettings から MgrsDataAsset を取り出し、
-    Phase 0 で確定した式に従う MgrsTransformer を構築して返す。
+    """Extract MgrsDataAsset from the current level's WorldSettings and
+    construct a MgrsTransformer using the formula confirmed in Phase 0.
 
-    Phase 0 で判明した実プロパティ名: `mgrs_data_asset_soft_ptr` (TSoftObjectPtr)
-    MgrsOffsetPosition の単位: m (cm ではない)
+    Actual property name discovered in Phase 0: `mgrs_data_asset_soft_ptr` (TSoftObjectPtr)
+    Unit of MgrsOffsetPosition: m (not cm)
 
     Raises:
-        RuntimeError: WorldSettings に期待するプロパティが存在しない、
-                      またはアセットのロードに失敗した場合。
+        RuntimeError: If the expected property does not exist in WorldSettings,
+                      or if the asset fails to load.
     """
     world = _get_editor_world()
     ws = world.get_world_settings()
 
-    # Phase 0 で確定: プロパティ名は mgrs_data_asset_soft_ptr
-    # 旧プラン案にあった mgrs_data_asset / MgrsDataAsset は誤りなので使わない
+    # Confirmed in Phase 0: property name is mgrs_data_asset_soft_ptr
+    # mgrs_data_asset / MgrsDataAsset from the old plan draft are incorrect
     raw = ws.get_editor_property("mgrs_data_asset_soft_ptr")
     if raw is None:
         raise RuntimeError(
@@ -122,14 +122,14 @@ def get_world_mgrs_data() -> MgrsTransformer:
     if offset is None:
         raise RuntimeError("MgrsDataAsset.MgrsOffsetPosition is null.")
 
-    # Phase 0 で確定: offset.x / offset.y / offset.z は m 単位
-    # x_sign=+1, y_sign=-1 は標準 CARLA Z-up かつ Y のみ反転 (Phase 0 で確定)
+    # Confirmed in Phase 0: offset.x / offset.y / offset.z are in metres
+    # x_sign=+1, y_sign=-1: standard CARLA Z-up with Y-only inversion (confirmed in Phase 0)
     return MgrsTransformer(
         offset_x_m=float(offset.x),
         offset_y_m=float(offset.y),
         offset_z_m=float(offset.z),
         x_sign=+1,
-        y_sign=-1,   # CARLA 標準 Z-up かつ Y のみ反転
+        y_sign=-1,   # standard CARLA Z-up with Y-only inversion
     )
 
 
@@ -138,19 +138,20 @@ def get_world_mgrs_data() -> MgrsTransformer:
 # ---------------------------------------------------------------------------
 
 def find_actor_by_sign_id(sign_id: str) -> Optional[unreal.Actor]:
-    """レベル内の TrafficLightBase アクターから sign_id が一致するものを返す。
+    """Return the TrafficLightBase actor in the level whose sign_id matches.
 
-    EditorActorSubsystem でレベル内の全アクターを走査し、TrafficLightBase 派生
-    かつ TrafficLightComponent.get_sign_id() が一致するものを探す。
+    Scans all actors in the level via EditorActorSubsystem, looking for one
+    that is a TrafficLightBase subclass and whose
+    TrafficLightComponent.get_sign_id() matches the given value.
 
-    複数ヒット時はデバッグ用に警告ログを出して最初の 1 件を返す。
-    見つからない場合は None を返す。
+    If multiple actors match, a warning is logged for debugging and the first
+    one is returned.  Returns None if no match is found.
     """
     actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     matches = []
 
     for a in actor_subsys.get_all_level_actors():
-        # TrafficLightBase 派生でないアクターはスキップ
+        # Skip actors that are not TrafficLightBase subclasses
         if not isinstance(a, unreal.TrafficLightBase):
             continue
 
@@ -161,7 +162,7 @@ def find_actor_by_sign_id(sign_id: str) -> Optional[unreal.Actor]:
         try:
             sid = tlc.get_sign_id()
         except Exception:
-            # get_sign_id が存在しない古い BP クラスなどへの安全なフォールバック
+            # Safe fallback for old BP classes that lack get_sign_id
             continue
 
         if sid == sign_id:
@@ -182,14 +183,14 @@ def find_actor_by_sign_id(sign_id: str) -> Optional[unreal.Actor]:
 # ---------------------------------------------------------------------------
 
 def _load_bp_class(class_path: str):
-    """ObjectPath から GeneratedClass (UClass) をロードする。
+    """Load a GeneratedClass (UClass) from an ObjectPath.
 
-    `EditorAssetLibrary.load_blueprint_class()` は Asset path
-    (`/Game/.../BP_X.BP_X`) を期待し、戻り値が `BP_X_C` (GeneratedClass)。
-    呼び出し側が `_C` サフィックス付きで渡してきても剥がしてから渡す。
+    `EditorAssetLibrary.load_blueprint_class()` expects an asset path
+    (`/Game/.../BP_X.BP_X`) and returns `BP_X_C` (the GeneratedClass).
+    Any `_C` suffix passed by the caller is stripped before forwarding.
 
     Raises:
-        RuntimeError: ロードに失敗した場合。
+        RuntimeError: If loading fails.
     """
     asset_path = class_path[:-2] if class_path.endswith("_C") else class_path
     cls = unreal.EditorAssetLibrary.load_blueprint_class(asset_path)
@@ -200,13 +201,14 @@ def _load_bp_class(class_path: str):
 
 def _collect_unused_meshes(used_labels: set,
                            label_prefixes=("Traffic_Lights", "Pedestrian_Lights")) -> list:
-    """`used_labels` に含まれない既存信号機メッシュ一覧を返す (Pole 除く)。
+    """Return a list of existing signal meshes not included in `used_labels` (Poles excluded).
 
-    Phase 4.2 追加: lanelet2 紐付けから漏れた既存メッシュを検出する。
-    撤去された信号機の残置、マップ設計時の冗長、lanelet2 編集漏れ等の発見に使う。
+    Added in Phase 4.2: detects existing meshes that were missed in lanelet2 association.
+    Useful for finding leftover meshes from removed signals, redundant map design,
+    or missing lanelet2 edits.
 
     Returns:
-        [(label, (x_cm, y_cm, z_cm)), ...] World 位置を含むタプルのリスト。
+        [(label, (x_cm, y_cm, z_cm)), ...] list of tuples including world position.
     """
     actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     out = []
@@ -226,17 +228,18 @@ def _collect_unused_meshes(used_labels: set,
 
 
 def _collect_mesh_z_stats(label_prefixes=("Traffic_Lights", "Pedestrian_Lights")) -> dict:
-    """既存メッシュの prefix 別 Z 統計を Editor から収集する。
+    """Collect per-prefix Z statistics for existing meshes from the Editor.
 
-    Phase 4.2 で追加: マップごとの Z 基準ズレ (海抜/楕円体/独自基準) や
-    pole_height の差を吸収するため、Full Run 開始時に 1 回呼び出して
-    `_find_nearest_existing_signal_mesh` の Z 妥当性判定に使う。
+    Added in Phase 4.2: called once at the start of a Full Run to absorb
+    per-map Z reference offsets (sea level / ellipsoid / custom datum) and
+    pole_height differences.  The result is passed to
+    `_find_nearest_existing_signal_mesh` for Z validity checks.
 
     Args:
-        label_prefixes: 収集対象の prefix 一覧。"Pole" を含むラベルは除外。
+        label_prefixes: List of prefixes to collect. Labels containing "Pole" are excluded.
 
     Returns:
-        {prefix: MeshZStats} の辞書。該当メッシュが無い prefix は含まない。
+        Dict of {prefix: MeshZStats}. Prefixes with no matching meshes are omitted.
     """
     actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     by_prefix: dict = {p: [] for p in label_prefixes}
@@ -254,10 +257,10 @@ def _collect_mesh_z_stats(label_prefixes=("Traffic_Lights", "Pedestrian_Lights")
 
 
 def _collect_pedestrian_mesh_materials() -> list:
-    """レベル上の Pedestrian_Lights_* アクターの Material element 構成を集計。
+    """Aggregate the Material element composition of Pedestrian_Lights_* actors in the level.
 
     Returns:
-        aggregate_material_stats() の出力リスト
+        Output list from aggregate_material_stats():
         [{"mesh": str, "num_elements": int, "elements": tuple, "count": int}, ...]
     """
     from lanelet2_traffic_light.frontend_editor.material_stats import aggregate_material_stats
@@ -272,7 +275,7 @@ def _collect_pedestrian_mesh_materials() -> list:
         try:
             smc = a.static_mesh_component
         except AttributeError:
-            # StaticMeshActor 以外はスキップ
+            # Skip non-StaticMeshActor actors
             try:
                 smc = a.get_component_by_class(unreal.StaticMeshComponent)
             except Exception:
@@ -289,7 +292,7 @@ def _collect_pedestrian_mesh_materials() -> list:
             mesh_name = mesh_asset.get_name()
         except Exception:
             continue
-        # Material element 名を順序保持で取得
+        # Retrieve Material element names in order
         try:
             num = smc.get_num_materials()
         except Exception:
@@ -306,18 +309,18 @@ def _collect_pedestrian_mesh_materials() -> list:
 
 
 def _label_prefixes_for_bp_class(bp_class_path: str) -> tuple:
-    """BP class path から、対応する既存メッシュのラベル prefix を決定する。
+    """Determine the existing mesh label prefix that corresponds to a BP class path.
 
-    Odaiba.umap の既存信号機メッシュは 2 系統あり、subtype に応じて
-    異なるラベル prefix が使われている:
+    Existing signal meshes in Odaiba.umap come in two families, each with a
+    different label prefix depending on subtype:
 
-    | subtype           | BP class              | 既存メッシュ命名     |
-    |-------------------|------------------------|-----------------------|
-    | red_yellow_green  | BP_OdaibaVehicleTL    | Traffic_Lights_*     |
-    | red_green         | BP_OdaibaPedestrianTL | Pedestrian_Lights_*  |
+    | subtype           | BP class              | Existing mesh naming  |
+    |-------------------|-----------------------|-----------------------|
+    | red_yellow_green  | BP_OdaibaVehicleTL    | Traffic_Lights_*      |
+    | red_green         | BP_OdaibaPedestrianTL | Pedestrian_Lights_*   |
 
-    車両用メッシュに歩行者用 BP を誤って snap させないよう、prefix を
-    厳密に分離する。
+    Prefixes are kept strictly separate to prevent a pedestrian BP from
+    accidentally snapping to a vehicle mesh.
     """
     if "Pedestrian" in bp_class_path:
         return ("Pedestrian_Lights",)
@@ -325,11 +328,11 @@ def _label_prefixes_for_bp_class(bp_class_path: str) -> tuple:
 
 
 def _label_prefix_for_subtype(subtype: str) -> str:
-    """subtype 別の actor label prefix を返す。
+    """Return the actor label prefix for a given subtype.
 
-    - red_yellow_green (車両用) → "TLV_"
-    - red_green (歩行者用)     → "TLP_"
-    - その他 (未知 subtype)    → "TL_" (フォールバック、Phase 5② 以前と互換)
+    - red_yellow_green (vehicle)  → "TLV_"
+    - red_green (pedestrian)      → "TLP_"
+    - other (unknown subtype)     → "TL_" (fallback, compatible with pre-Phase 5-2)
     """
     if subtype == "red_yellow_green":
         return "TLV_"
@@ -343,25 +346,27 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
                                        label_prefixes: tuple = ("Traffic_Lights",),
                                        max_z_diff_cm: float = 700.0,
                                        mesh_z_stats: Optional[dict] = None):
-    """target に最も近い既存の信号機メッシュ StaticMeshActor を返す (XY 距離ベース)。
+    """Return the nearest existing signal mesh StaticMeshActor to target (XY-distance based).
 
-    距離計算は **XY 平面距離** を使う (Phase 4.2 で変更)。
-    歩行者用信号機は地上 7-10m と core 計算の pole_height (車両用 12.3m)
-    と数 m ズレるため、3D 距離だと radius=300cm 外になって snap fail
-    していた。XY 距離なら一致する。誤 snap 防止に Z 妥当性を別途確認:
+    Distance is computed using **XY plane distance** (changed in Phase 4.2).
+    Pedestrian signals are placed at 7-10 m above ground, which differs from
+    the core-computed pole_height (12.3 m for vehicles) by several metres; using
+    3D distance would put them outside radius=300 cm and cause snap failures.
+    XY distance resolves this.  Z validity is verified separately to prevent
+    incorrect snapping:
 
-    - `mesh_z_stats` が与えられた場合: prefix 別に Tukey の 1.5 IQR 範囲外
-      の mesh を除外 (マップ非依存、自動適応)。
-    - 与えられない場合: target.z との差が `max_z_diff_cm` 超のものを除外
-      (固定値、fallback)。
+    - If `mesh_z_stats` is provided: meshes outside the Tukey 1.5 IQR range
+      per prefix are excluded (map-independent, adaptive).
+    - Otherwise: meshes whose Z difference from target exceeds `max_z_diff_cm`
+      are excluded (fixed value, fallback).
 
     Args:
-        target: 検索の中心 (Unreal world cm)。
-        max_distance_cm: XY 平面距離の上限 (cm)。0 以下なら無制限。
-        label_prefixes: 許容するアクター prefix。
-        max_z_diff_cm: mesh_z_stats=None 時の Z 差絶対値上限。
-        mesh_z_stats: `{prefix: MeshZStats}` の dict。`_collect_mesh_z_stats()`
-            で取得。stats があるならそれを優先する。
+        target: Search center (Unreal world cm).
+        max_distance_cm: XY plane distance limit (cm). Unlimited if <= 0.
+        label_prefixes: Allowed actor label prefixes.
+        max_z_diff_cm: Absolute Z difference limit when mesh_z_stats is None.
+        mesh_z_stats: Dict of `{prefix: MeshZStats}` obtained from
+            `_collect_mesh_z_stats()`. Takes priority over the fixed fallback.
 
     Returns:
         (actor or None, xy_distance_cm)
@@ -385,7 +390,7 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
             continue
         loc = a.get_actor_location()
 
-        # Z 妥当性チェック: stats 優先、なければ静的 fallback
+        # Z validity check: stats take priority; static fallback otherwise
         if mesh_z_stats and matched_prefix in mesh_z_stats:
             stats = mesh_z_stats[matched_prefix]
             if loc.z < stats.tukey_low or loc.z > stats.tukey_high:
@@ -409,57 +414,58 @@ def _spawn_or_update(spec: PlacementSpec,
                      snap_radius_cm: float = 300.0,
                      skip_when_snap_fails: bool = True,
                      mesh_z_stats: Optional[dict] = None) -> tuple:
-    """spec.sign_id が既にレベル内にあれば位置・回転を更新し、なければ新規 spawn する。
+    """Update location/rotation if spec.sign_id already exists in the level; otherwise spawn new.
 
-    冪等性を保つための中心ロジック。同じ sign_id で何度実行しても
-    アクターが重複しないことが保証される。
+    Core idempotency logic: running with the same sign_id any number of times
+    guarantees no duplicate actors.
 
-    独立アクターとして spawn する (Phase 0 確認事項: 既存信号機メッシュは
-    OdaibaFinaL_ver7_lights に attach されているが、今回 spawn するアクターは
-    親 attach なしの独立配置)。
+    Spawned as an independent actor (confirmed in Phase 0: existing signal meshes
+    are attached to OdaibaFinaL_ver7_lights, but actors spawned here are placed
+    without a parent attachment).
 
     Args:
-        spec: core.api.generate_placements() が生成した PlacementSpec。
-              location_cm は (X_cm, Y_cm, Z_cm)、
-              rotation_deg は **(roll, pitch, yaw)** 順。
-              core.api では rotation_deg=(0.0, 0.0, yaw_deg) として生成される。
-        snap_to_existing_mesh: True ならば、計算した位置の近傍に既存の
-              対応メッシュ (車両用は Traffic_Lights_*、歩行者用は
-              Pedestrian_Lights_*) があれば、その位置・回転を採用する。
-              core 計算の数 cm / 数度のズレを吸収できる (Odaiba 専用の
-              微調整モード)。
-        snap_radius_cm: スナップ判定の最大距離。離れすぎたメッシュは
-              無視して core 計算値を使う。
-        skip_when_snap_fails: snap_to_existing_mesh=True かつ近傍に対応メッシュが
-              無い場合、新規 spawn を skip する (Phase 4.2 で追加)。
-              Odaiba.umap の 3D 街並みカバー外の信号機が空中に出現するのを防ぐ。
-              既存アクターの更新には影響しない (snap target なくても更新は走る)。
+        spec: PlacementSpec produced by core.api.generate_placements().
+              location_cm is (X_cm, Y_cm, Z_cm);
+              rotation_deg is in **(roll, pitch, yaw)** order.
+              core.api generates rotation_deg=(0.0, 0.0, yaw_deg).
+        snap_to_existing_mesh: If True, adopts the position and rotation of a
+              nearby existing mesh (Traffic_Lights_* for vehicles,
+              Pedestrian_Lights_* for pedestrians) when one is found.
+              Absorbs a few cm / a few degrees of drift from core calculations
+              (Odaiba-specific fine-tuning mode).
+        snap_radius_cm: Maximum distance for snap matching. Meshes farther
+              than this are ignored and the core-computed value is used.
+        skip_when_snap_fails: If snap_to_existing_mesh=True and no nearby mesh
+              is found, skip the new spawn (added in Phase 4.2).
+              Prevents signals outside the 3D cityscape coverage of Odaiba.umap
+              from appearing in mid-air.
+              Does not affect updates to existing actors (update runs regardless).
 
     Returns:
         (actor, was_created, snap_info):
-          - 正常配置: (actor, True/False, dict or None)
-          - snap fail で skip: (None, False, None)
-        snap_info は snap モードで採用された既存メッシュの詳細 dict:
+          - Normal placement: (actor, True/False, dict or None)
+          - Skip due to snap failure: (None, False, None)
+        snap_info is a detail dict for the adopted existing mesh in snap mode:
           {"label": str, "xy_dist_cm": float, "mesh_name": str}
-        snap モード OFF または snap target なしの場合は None。
-        レポートファイル出力と逆方向漏れ集計に使う。
+        None when snap mode is off or no snap target was found.
+        Used for report file output and reverse-mismatch aggregation.
 
     Raises:
-        RuntimeError: BP クラスのロードまたは spawn に失敗した場合。
+        RuntimeError: If BP class loading or spawn fails.
     """
-    # PlacementSpec.location_cm は (X, Y, Z) のタプル
+    # PlacementSpec.location_cm is a (X, Y, Z) tuple
     location = unreal.Vector(spec.location_cm[0], spec.location_cm[1], spec.location_cm[2])
-    # PlacementSpec.rotation_deg は (roll, pitch, yaw) 順。
-    # `unreal.Rotator` のポジショナル引数は (pitch, yaw, roll) なので
-    # 軸の取り違えを避けるため keyword 引数で明示する。
+    # PlacementSpec.rotation_deg is in (roll, pitch, yaw) order.
+    # `unreal.Rotator` positional arguments are (pitch, yaw, roll), so
+    # keyword arguments are used explicitly to avoid axis mix-ups.
     roll_deg, pitch_deg, yaw_deg = spec.rotation_deg
     rotation = unreal.Rotator(roll=roll_deg, pitch=pitch_deg, yaw=yaw_deg)
 
-    # Snap モード: 既存メッシュの位置・回転・StaticMesh アセットを採用してドリフトを吸収。
-    # BP class path に応じて検索対象 prefix を切り替える (Pedestrian → Pedestrian_Lights)。
-    snapped_mesh_asset = None  # snap モードで採用する StaticMesh アセット
+    # Snap mode: adopt position, rotation, and StaticMesh asset from existing mesh to absorb drift.
+    # Search prefix is switched based on BP class path (Pedestrian → Pedestrian_Lights).
+    snapped_mesh_asset = None  # StaticMesh asset to adopt in snap mode
     snap_target_found = False
-    snap_info = None  # snap 詳細 dict (レポート出力 & 逆方向漏れ集計用)
+    snap_info = None  # snap detail dict (for report output & reverse-mismatch aggregation)
     if snap_to_existing_mesh:
         label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path)
         nearest, dist = _find_nearest_existing_signal_mesh(
@@ -470,8 +476,9 @@ def _spawn_or_update(spec: PlacementSpec,
             snap_target_found = True
             snapped_loc = nearest.get_actor_location()
             snapped_rot = nearest.get_actor_rotation()
-            # snap target の StaticMesh も取得 — BP 固定の Scene_1024 と pivot が
-            # 違うと位置が完全に合わないので、対応する元 mesh に置き換える
+            # Also retrieve the snap target's StaticMesh — if its pivot differs
+            # from the BP's fixed Scene_1024, replace it with the corresponding
+            # source mesh so positions align correctly
             try:
                 target_sm_comp = nearest.get_component_by_class(unreal.StaticMeshComponent)
                 if target_sm_comp is not None:
@@ -500,7 +507,7 @@ def _spawn_or_update(spec: PlacementSpec,
 
     existing = find_actor_by_sign_id(spec.sign_id)
     if existing is not None:
-        # 既存アクターの位置・回転のみ更新 (ラベルや sign_id は維持)
+        # Update only position and rotation of existing actor (label and sign_id are preserved)
         existing.set_actor_location(location, sweep=False, teleport=True)
         existing.set_actor_rotation(rotation, teleport_physics=True)
         if snap_to_existing_mesh:
@@ -509,12 +516,12 @@ def _spawn_or_update(spec: PlacementSpec,
                 _override_static_mesh(existing, snapped_mesh_asset)
         return existing, False, snap_info
 
-    # 新規 spawn の手前で snap fail を skip する
-    # (既存アクター更新はここに到達しないので影響なし)
+    # Skip snap failures before new spawn
+    # (existing actor updates never reach this point, so they are unaffected)
     if snap_to_existing_mesh and skip_when_snap_fails and not snap_target_found:
         return None, False, None
 
-    # 新規 spawn
+    # New spawn
     bp_cls = _load_bp_class(spec.actor_class_path)
     actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     actor = actor_subsys.spawn_actor_from_class(bp_cls, location, rotation)
@@ -524,17 +531,17 @@ def _spawn_or_update(spec: PlacementSpec,
             f"(sign_id={spec.sign_id})"
         )
 
-    # Snap モードでは BP の StaticMeshComponent に baked-in されている
-    # Relative Rotation (例: Roll=-90, Pitch=85.4) が snap World Rotation と
-    # 二重適用されてしまうため、ここで打ち消す。さらに、各 Traffic_Lights_* は
-    # 個別の Scene_NNNN アセットを使うため、その mesh も snap target のものに
-    # 差し替えてピボット位置を一致させる。
+    # In snap mode, the Relative Rotation baked into the BP's StaticMeshComponent
+    # (e.g. Roll=-90, Pitch=85.4) would be double-applied on top of the snap World
+    # Rotation, so it is zeroed out here.  Additionally, each Traffic_Lights_* uses
+    # an individual Scene_NNNN asset, so the mesh is also replaced with the snap
+    # target's mesh to align pivot positions.
     if snap_to_existing_mesh:
         _zero_out_static_mesh_relative_rotation(actor)
         if snapped_mesh_asset is not None:
             _override_static_mesh(actor, snapped_mesh_asset)
 
-    # TrafficLightComponent に sign_id を書き込む (後から find_actor_by_sign_id で検索できるように)
+    # Write sign_id to TrafficLightComponent (so it can be found later by find_actor_by_sign_id)
     tlc = actor.get_traffic_light_component()
     if tlc is not None:
         tlc.set_sign_id(spec.sign_id)
@@ -544,7 +551,7 @@ def _spawn_or_update(spec: PlacementSpec,
             f"sign_id={spec.sign_id} will not be persisted on the component."
         )
 
-    # エディタ上で識別しやすいラベルを付ける (subtype 別 prefix: TLV_/TLP_/TL_)
+    # Assign a human-readable label in the editor (subtype-specific prefix: TLV_/TLP_/TL_)
     prefix = _label_prefix_for_subtype(spec.subtype)
     actor.set_actor_label(f"{prefix}{spec.sign_id}")
 
@@ -552,11 +559,12 @@ def _spawn_or_update(spec: PlacementSpec,
 
 
 def _override_static_mesh(actor, new_mesh) -> None:
-    """Actor 配下の全 StaticMeshComponent の StaticMesh を差し替える。
+    """Replace the StaticMesh on every StaticMeshComponent under the actor.
 
-    snap モードでは spawn 直後の BP デフォルト mesh (Scene_1024 固定) を
-    snap target の Traffic_Lights_* が使っている mesh (Scene_NNNN ごとに異なる)
-    に上書きすることで、pivot 差による微妙な位置ズレを解消する。
+    In snap mode, this overwrites the BP default mesh (fixed Scene_1024) that
+    is present right after spawning with the mesh used by the snap target's
+    Traffic_Lights_* (which varies per Scene_NNNN), eliminating subtle position
+    offsets caused by pivot differences.
     """
     if new_mesh is None:
         return
@@ -575,12 +583,11 @@ def _override_static_mesh(actor, new_mesh) -> None:
 
 
 def _zero_out_static_mesh_relative_rotation(actor) -> None:
-    """spawn 直後の Actor 内の StaticMeshComponent の Relative Rotation を
-    (0, 0, 0) にリセットする。
+    """Reset the Relative Rotation of StaticMeshComponents inside a freshly spawned Actor to (0, 0, 0).
 
-    snap モードでは Actor の World Rotation を既存メッシュにスナップするため、
-    BP に baked-in されている Component Relative Rotation を含む二重適用を
-    避ける必要がある。
+    In snap mode the Actor's World Rotation is snapped to an existing mesh, so
+    double-application of the Component Relative Rotation baked into the BP
+    must be avoided.
     """
     try:
         comps = actor.get_components_by_class(unreal.StaticMeshComponent)
@@ -590,7 +597,7 @@ def _zero_out_static_mesh_relative_rotation(actor) -> None:
         try:
             comp.set_relative_rotation(unreal.Rotator(0.0, 0.0, 0.0), sweep=False, teleport=True)
         except TypeError:
-            # 引数違いのオーバーロード対策
+            # Guard against overload signature mismatch
             try:
                 comp.set_relative_rotation(unreal.Rotator(0.0, 0.0, 0.0))
             except Exception:
@@ -606,28 +613,29 @@ def _zero_out_static_mesh_relative_rotation(actor) -> None:
 def _place_groups(groups: list, sign_id_to_actor: dict,
                   sign_id_to_subtype: dict,
                   group_bp_path: Optional[str] = None) -> tuple:
-    """各 GroupSpec ごとに ATrafficLightGroup actor を配置し、subtype 別に
-    Controller を 2 個 (Vehicle/Pedestrian) 紐付ける (Phase 6)。
+    """Place an ATrafficLightGroup actor for each GroupSpec and bind 2 Controllers
+    per subtype (Vehicle/Pedestrian) as defined in Phase 6.
 
-    Phase 5② の 1 Group = 1 Controller では subtype 混在で `set_state` が
-    全 TL に同期してしまう問題があったため、Phase 6 で member_actors を
-    subtype 別に分割し、Group に Controller を 2 個 add_controller する設計に
-    変更した。`set_state` は直接 Component に書くので subtype 独立操作が可能。
+    Phase 5-2's 1 Group = 1 Controller design caused `set_state` to sync across
+    all TLs when subtypes were mixed.  Phase 6 changed the design to split
+    member_actors by subtype and call add_controller twice per Group.
+    `set_state` is written directly to the Component, enabling independent
+    per-subtype control.
 
     Args:
-        groups: corelib.api.generate_placements() の groups リスト。
-        sign_id_to_actor: 配置済 TL の sign_id → Actor マップ。
-        sign_id_to_subtype: sign_id → subtype 文字列 (red_yellow_green / red_green)。
-            place_from_specs で {p.sign_id: p.subtype for p in placements} として構築する。
-        group_bp_path: 派生 Group BP の Asset Path (bp_factory.ensure_group_bp で
-            得られた値)。None の場合は C++ ATrafficLightGroup を直接 spawn。
+        groups: Groups list from corelib.api.generate_placements().
+        sign_id_to_actor: Map of sign_id → Actor for already-placed TLs.
+        sign_id_to_subtype: Map of sign_id → subtype string (red_yellow_green / red_green).
+            Built in place_from_specs as {p.sign_id: p.subtype for p in placements}.
+        group_bp_path: Asset Path of the derived Group BP (obtained from
+            bp_factory.ensure_group_bp). If None, C++ ATrafficLightGroup is spawned directly.
 
     Returns:
         (created_count, updated_count)
     """
     from lanelet2_traffic_light.frontend_editor.subtype_splitter import split_members_by_subtype
 
-    # Group spawn 用クラスを決定: 派生 BP > C++ 直派生
+    # Determine the class for Group spawn: derived BP > direct C++ subclass
     group_cls = None
     if group_bp_path:
         try:
@@ -641,7 +649,7 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
         group_cls = unreal.TrafficLightGroup
 
     actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-    # 既存 TLGroup_* アクターのラベルマップ (冪等再実行のため)
+    # Label map of existing TLGroup_* actors (for idempotent re-runs)
     existing_labels: dict = {
         a.get_actor_label(): a
         for a in actor_subsys.get_all_level_actors()
@@ -652,14 +660,14 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
     updated = 0
 
     for g in groups:
-        # subtype 別に member_actors を分割
+        # Split member_actors by subtype
         members_by_subtype = split_members_by_subtype(
             refers=g.refers,
             sign_id_to_actor=sign_id_to_actor,
             sign_id_to_subtype=sign_id_to_subtype,
         )
-        # find_actor_by_sign_id によるレベル探索フォールバックも考慮
-        # (sign_id_to_actor に無いが、レベル上には存在する場合)
+        # Also consider level-search fallback via find_actor_by_sign_id
+        # (for cases not in sign_id_to_actor but present in the level)
         for way_id in g.refers:
             sid = str(way_id)
             if sid in sign_id_to_actor:
@@ -670,20 +678,20 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
                 members_by_subtype.setdefault(subtype, []).append(actor)
 
         if not members_by_subtype:
-            # 全 member が snap_skipped 等で配置されなかったグループはスキップ
+            # Skip groups where all members were not placed (e.g. snap_skipped)
             continue
 
         label = f"TLGroup_{g.relation_id}"
         if label in existing_labels:
             group_actor = existing_labels[label]
-            # 既存 Controllers を空にしてやり直す (冪等性のため)
+            # Clear existing Controllers and redo (for idempotency)
             try:
                 group_actor.set_editor_property("controllers", [])
             except Exception:
                 pass
             updated += 1
         else:
-            # グループの原点は最初に出現する subtype 群の先頭メンバーに合わせる
+            # Place the group origin at the first member of the first subtype encountered
             first_actor = next(iter(members_by_subtype.values()))[0]
             group_actor = actor_subsys.spawn_actor_from_class(
                 group_cls,
@@ -698,13 +706,13 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
             group_actor.set_actor_label(label)
             created += 1
 
-        # JunctionId に lanelet2 relation_id を流用
+        # Reuse lanelet2 relation_id as JunctionId
         try:
             group_actor.set_editor_property("junction_id", int(g.relation_id))
         except Exception:
             pass
 
-        # subtype 別に Controller を 1 個ずつ作成
+        # Create one Controller per subtype
         for subtype, members in members_by_subtype.items():
             try:
                 controller = unreal.new_object(
@@ -756,28 +764,28 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
 
 
 # ---------------------------------------------------------------------------
-# レポートファイル出力 (Phase 4.2 追加)
+# Report file output (added in Phase 4.2)
 # ---------------------------------------------------------------------------
 
 def _write_full_run_report(report: "PlacementReport", path: str,
                            n_input_placements: int,
                            metadata: Optional[dict] = None) -> None:
-    """place_from_specs 完了後の全件レポートをテキストファイルに書き出す。
+    """Write the full run report to a text file after place_from_specs completes.
 
-    省略なく以下を出力 (1 ファイル内に複数セクション):
-      0. METADATA: 入力 osm ファイル・CarlaUE5 ディレクトリ等のフルパス
-      1. SUMMARY: 集計値
-      2. Z STATS: prefix 別の Z 統計 (Tukey range)
-      3. PLACED: 配置成功した spec の sign_id, snap target, xy_dist, mesh
-      4. SNAP_SKIPPED: lanelet2 way ありだが Odaiba 街並み外で skip
-      5. FAILED: 例外発生で配置失敗
-      6. UNUSED_MESHES: Odaiba メッシュありだが lanelet2 way 無し (逆方向漏れ)
+    Outputs the following sections completely (multiple sections in one file):
+      0. METADATA: full paths of the input osm file, CarlaUE5 directory, etc.
+      1. SUMMARY: aggregated counts
+      2. Z STATS: per-prefix Z statistics (Tukey range)
+      3. PLACED: sign_id, snap target, xy_dist, mesh for successfully placed specs
+      4. SNAP_SKIPPED: lanelet2 way exists but skipped because outside Odaiba cityscape
+      5. FAILED: placement failures due to exceptions
+      6. UNUSED_MESHES: Odaiba mesh exists but no lanelet2 way matched (reverse mismatch)
 
-    出力先は上書き。git 管理外の場所を想定 (例 T4Fork.odaiba 直下)。
+    Output is overwritten. Expected to be written outside git control (e.g. directly under T4Fork.odaiba).
 
     Args:
-        metadata: 任意の key/value をレポート冒頭に記載。`osm_path`,
-            `carla_ue5_dir` などのフルパスを渡すと後追跡しやすい。
+        metadata: Arbitrary key/value pairs written at the top of the report.
+            Passing full paths for `osm_path`, `carla_ue5_dir`, etc. aids later tracing.
     """
     import datetime
     import os
@@ -789,7 +797,7 @@ def _write_full_run_report(report: "PlacementReport", path: str,
         f.write(f"# report file path: {os.path.abspath(path)}\n")
         f.write("\n")
 
-        # 0. METADATA (入力ファイル/ディレクトリのフルパス)
+        # 0. METADATA (full paths of input files / directories)
         if metadata:
             f.write("## METADATA\n")
             for k, v in metadata.items():
@@ -916,7 +924,7 @@ def _write_full_run_report(report: "PlacementReport", path: str,
                     f"mesh={row['mesh']} num_elements={row['num_elements']} "
                     f"elements=\"{','.join(row['elements'])}\" count={row['count']}\n"
                 )
-            # summary 行
+            # summary line
             total = sum(r["count"] for r in report.pedestrian_material_stats)
             unique = len(report.pedestrian_material_stats)
             n3 = sum(1 for r in report.pedestrian_material_stats if r["num_elements"] == 3)
@@ -943,42 +951,43 @@ def place_from_specs(
     report_metadata: Optional[dict] = None,
     group_bp_path: Optional[str] = None,
 ) -> PlacementReport:
-    """PlacementSpec のリストをレベルに冪等に配置する。
+    """Idempotently place the list of PlacementSpecs into the level.
 
-    core.api.generate_placements() の出力をそのまま渡すことを想定している。
-    全処理を 1 つの ScopedEditorTransaction で囲むため、失敗時は Ctrl+Z で
-    一括 Undo が可能。
+    Expects the output of core.api.generate_placements() to be passed directly.
+    All operations are wrapped in a single ScopedEditorTransaction so that
+    failures can be undone in bulk with Ctrl+Z.
 
     Args:
-        placements: core.api.generate_placements() の戻り値 [0] (PlacementSpec のリスト)
-        groups:     core.api.generate_placements() の戻り値 [1] (GroupSpec のリスト)
-        save_level: True なら配置後に現在のレベルをディスクに保存する。
-                    デフォルトは False (手動で Ctrl+S を推奨)。
-        snap_to_existing_mesh: True ならば、各 spawn 前に対応する既存メッシュ
-                    (車両用は `Traffic_Lights_*`、歩行者用は
-                    `Pedestrian_Lights_*`) の位置・回転を採用する
-                    (Odaiba 専用の微調整モード)。yaw 3°前後・Z 数 cm の
-                    ドリフトを吸収。`snap_radius_cm` 以内のメッシュのみ採用。
-        snap_radius_cm: スナップ判定の最大距離 (cm)。
-        skip_when_snap_fails: snap_to_existing_mesh=True かつ snap target が
-                    見つからない場合、新規 spawn を skip する。Odaiba.umap の
-                    3D 街並みカバー外の信号機が空中に出現するのを防ぐ。
-                    skip された spec は report.snap_skipped に集計される。
+        placements: Return value [0] of core.api.generate_placements() (list of PlacementSpec)
+        groups:     Return value [1] of core.api.generate_placements() (list of GroupSpec)
+        save_level: If True, saves the current level to disk after placement.
+                    Default is False (manual Ctrl+S recommended).
+        snap_to_existing_mesh: If True, adopts the position and rotation of the
+                    corresponding existing mesh (`Traffic_Lights_*` for vehicles,
+                    `Pedestrian_Lights_*` for pedestrians) before each spawn
+                    (Odaiba-specific fine-tuning mode).
+                    Absorbs yaw drift of ~3° and Z drift of a few cm.
+                    Only meshes within `snap_radius_cm` are adopted.
+        snap_radius_cm: Maximum distance for snap matching (cm).
+        skip_when_snap_fails: If snap_to_existing_mesh=True and no snap target is
+                    found, skip the new spawn. Prevents signals outside the 3D
+                    cityscape coverage of Odaiba.umap from appearing in mid-air.
+                    Skipped specs are aggregated in report.snap_skipped.
 
     Returns:
-        PlacementReport: 配置結果のサマリ。
-                         report.failed に失敗した (sign_id, 理由) タプルのリストが入る。
-                         report.snap_skipped に snap fail で skip した
-                         (sign_id, location_cm) のリストが入る。
+        PlacementReport: Summary of placement results.
+                         report.failed holds a list of (sign_id, reason) tuples for failures.
+                         report.snap_skipped holds a list of (sign_id, location_cm)
+                         for specs skipped due to snap failure.
     """
     report = PlacementReport()
 
     with unreal.ScopedEditorTransaction("Generate Traffic Lights from lanelet2"):
         sign_id_to_actor: dict = {}
 
-        # Phase 4.2: snap 対象メッシュの Z 統計を 1 回だけ収集。
-        # _find_nearest_existing_signal_mesh に渡すと、prefix 別の Tukey range
-        # で Z 妥当性を判定する (マップ非依存)。stats が空なら静的 fallback。
+        # Phase 4.2: collect Z statistics for snap target meshes once.
+        # Passed to _find_nearest_existing_signal_mesh for per-prefix Tukey range
+        # Z validity checks (map-independent). Falls back to static threshold if empty.
         mesh_z_stats = None
         if snap_to_existing_mesh:
             mesh_z_stats = _collect_mesh_z_stats()
@@ -989,7 +998,7 @@ def place_from_specs(
                     f"median={st.z_median:.1f} q75={st.z_q75:.1f} "
                     f"max={st.z_max:.1f} | tukey=[{st.tukey_low:.1f}, {st.tukey_high:.1f}]"
                 )
-            # スナップショットを report に保持 (レポート出力用)
+            # Store snapshot in report (for report output)
             report.z_stats_snapshot = {
                 prefix: {
                     "n": st.n,
@@ -1001,7 +1010,7 @@ def place_from_specs(
                 for prefix, st in mesh_z_stats.items()
             }
 
-        # Phase 6 課題 D: 歩行者用メッシュの Material 構成を集計
+        # Phase 6 issue D: aggregate Material composition of pedestrian meshes
         try:
             report.pedestrian_material_stats = _collect_pedestrian_mesh_materials()
             for row in report.pedestrian_material_stats:
@@ -1015,7 +1024,7 @@ def place_from_specs(
             )
             report.pedestrian_material_stats = []
 
-        # snap モードで採用された既存メッシュのラベル集合 (逆方向漏れ検出用)
+        # Set of existing mesh labels adopted in snap mode (for reverse-mismatch detection)
         used_mesh_labels: set = set()
 
         for spec in placements:
@@ -1030,7 +1039,7 @@ def place_from_specs(
                 if snap_info is not None:
                     used_mesh_labels.add(snap_info["label"])
                 if actor is None:
-                    # snap fail で skip された (new spawn のみ; 既存更新は actor を返す)
+                    # Skipped due to snap failure (new spawns only; existing updates always return actor)
                     report.snap_skipped.append((spec.sign_id, spec.location_cm))
                     report.snap_skipped_records.append({
                         "sign_id": spec.sign_id,
@@ -1048,7 +1057,7 @@ def place_from_specs(
                     })
                     continue
                 sign_id_to_actor[spec.sign_id] = actor
-                # 配置レコード (レポート出力用)
+                # Placement record (for report output)
                 rec = {
                     "sign_id": spec.sign_id,
                     "actor_label": actor.get_actor_label(),
@@ -1081,8 +1090,8 @@ def place_from_specs(
                     f"place_from_specs: sign_id={spec.sign_id} failed: {e}"
                 )
 
-        # 逆方向の漏れ: 既存メッシュとして存在するが、どの lanelet2 way とも
-        # マッチしなかった信号機メッシュをレポート (Phase 4.2 追加)。
+        # Reverse mismatch: report signal meshes that exist as Odaiba meshes but
+        # were not matched to any lanelet2 way (added in Phase 4.2).
         if snap_to_existing_mesh:
             report.unused_existing_meshes = _collect_unused_meshes(used_mesh_labels)
             unreal.log(
@@ -1098,8 +1107,8 @@ def place_from_specs(
                     f"  ... and {len(report.unused_existing_meshes) - 10} more"
                 )
 
-        # グループ配置 (individual アクター配置後に実行する必要がある)
-        # Phase 6: subtype 別 Controller のために sign_id → subtype マップを構築
+        # Group placement (must run after individual actor placement)
+        # Phase 6: build sign_id → subtype map for per-subtype Controllers
         sign_id_to_subtype = {p.sign_id: p.subtype for p in placements}
         gc, gu = _place_groups(
             groups,
@@ -1118,11 +1127,11 @@ def place_from_specs(
         )
 
     if save_level:
-        # 注意: 保存は Undo スタックをフラッシュしないが、ユーザーに明示的に
-        # 承認させるため save_level=True は明示的に渡した場合のみ実行する。
+        # Note: saving does not flush the Undo stack, but to require explicit
+        # user approval, save_level=True is only executed when passed explicitly.
         unreal.EditorLevelLibrary.save_current_level()
 
-    # レポートファイル出力 (Phase 4.2 追加): 省略なし全件
+    # Report file output (added in Phase 4.2): complete, no omissions
     if report_path:
         try:
             _write_full_run_report(
