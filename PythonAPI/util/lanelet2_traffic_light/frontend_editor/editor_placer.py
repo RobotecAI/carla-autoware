@@ -17,6 +17,9 @@ from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransform
 from lanelet2_traffic_light.frontend_editor.snap_stats import (
     MeshZStats, compute_z_stats,
 )
+from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
+    should_skip_mesh_override,
+)
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -463,6 +466,9 @@ def _spawn_or_update(spec: PlacementSpec,
 
     # Snap mode: adopt position, rotation, and StaticMesh asset from existing mesh to absorb drift.
     # Search prefix is switched based on BP class path (Pedestrian → Pedestrian_Lights).
+    # Pedestrian TLs keep their parent BP's 3-element canonical mesh so the
+    # parent lighting logic can drive red/green; skip snap mesh-override for them.
+    skip_mesh_override = should_skip_mesh_override(spec.actor_class_path)
     snapped_mesh_asset = None  # StaticMesh asset to adopt in snap mode
     snap_target_found = False
     snap_info = None  # snap detail dict (for report output & reverse-mismatch aggregation)
@@ -510,7 +516,7 @@ def _spawn_or_update(spec: PlacementSpec,
         # Update only position and rotation of existing actor (label and sign_id are preserved)
         existing.set_actor_location(location, sweep=False, teleport=True)
         existing.set_actor_rotation(rotation, teleport_physics=True)
-        if snap_to_existing_mesh:
+        if snap_to_existing_mesh and not skip_mesh_override:
             _zero_out_static_mesh_relative_rotation(existing)
             if snapped_mesh_asset is not None:
                 _override_static_mesh(existing, snapped_mesh_asset)
@@ -536,7 +542,7 @@ def _spawn_or_update(spec: PlacementSpec,
     # Rotation, so it is zeroed out here.  Additionally, each Traffic_Lights_* uses
     # an individual Scene_NNNN asset, so the mesh is also replaced with the snap
     # target's mesh to align pivot positions.
-    if snap_to_existing_mesh:
+    if snap_to_existing_mesh and not skip_mesh_override:
         _zero_out_static_mesh_relative_rotation(actor)
         if snapped_mesh_asset is not None:
             _override_static_mesh(actor, snapped_mesh_asset)
