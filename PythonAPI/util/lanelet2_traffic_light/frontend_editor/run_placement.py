@@ -43,10 +43,9 @@ def run_placement(osm_path, limit=None):
         return None
 
     project_dir = unreal.Paths.project_dir()
-    report_path = os.path.abspath(os.path.join(
-        project_dir, "..", "..", "..", "lanelet2_tl_full_run_report.txt",
-    ))
 
+    # Resolve the currently open level's path and map name (basename) first,
+    # so the report file name can include the map name.
     try:
         world = unreal.get_editor_subsystem(
             unreal.UnrealEditorSubsystem).get_editor_world()
@@ -62,6 +61,13 @@ def run_placement(osm_path, limit=None):
     except Exception:
         map_file_path = "<unknown>"
         map_name = "Unknown"
+
+    # Report file name includes the map name, e.g.
+    # lanelet2_tl_full_run_report.Odaiba.txt
+    report_path = os.path.abspath(os.path.join(
+        project_dir, "..", "..", "..",
+        f"lanelet2_tl_full_run_report.{map_name}.txt",
+    ))
 
     unreal.log(f"[lanelet2_tl] ensuring subtype BPs for map '{map_name}'...")
     bp_override = ensure_subtype_bps(PROFILE_JP, map_name)
