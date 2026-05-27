@@ -1,11 +1,11 @@
-"""MGRS local_x/local_y (m) を Unreal world 座標 (cm) に変換するモジュール。
+"""Module for converting MGRS local_x/local_y (m) to Unreal world coordinates (cm).
 
-Phase 0 検証で確定した実装：
-- MgrsDataAsset.MgrsOffsetPosition の単位は m (cm ではない)
-- 標準 CARLA Z-up convention、Y のみ反転、X/Z は同符号
-- 信号機の Unreal Z 高さは pole_height_m から直接算出 (offset.Z は 0 が標準)
+Implementation confirmed in Phase 0 validation:
+- Unit of MgrsDataAsset.MgrsOffsetPosition is m (not cm)
+- Standard CARLA Z-up convention; only Y is inverted, X/Z share the same sign
+- Unreal Z height of a traffic light is derived directly from pole_height_m (offset.Z is 0 by default)
 
-座標変換式:
+Coordinate conversion formulas:
     Unreal_X_cm = x_sign * (local_x_m - offset_x_m) * 100
     Unreal_Y_cm = y_sign * (local_y_m - offset_y_m) * 100
     Unreal_Z_cm = (pole_height_m - offset_z_m) * 100
@@ -15,20 +15,20 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class MgrsTransformer:
-    """MGRS 局所座標 (m) を Unreal world 座標 (cm) に変換。
+    """Convert MGRS local coordinates (m) to Unreal world coordinates (cm).
 
     Args:
-        offset_x_m: WorldSettings の MgrsOffsetPosition.X (m)。
-        offset_y_m: 同 Y (m)。
-        offset_z_m: 同 Z (m)。Odaiba では 0。
-        x_sign: lanelet2→Unreal X の符号 (Odaiba: +1)。
-        y_sign: lanelet2→Unreal Y の符号 (Odaiba: -1、北→南反転)。
+        offset_x_m: MgrsOffsetPosition.X from WorldSettings (m).
+        offset_y_m: Same for Y (m).
+        offset_z_m: Same for Z (m). 0 for Odaiba.
+        x_sign: Sign for the lanelet2->Unreal X axis (Odaiba: +1).
+        y_sign: Sign for the lanelet2->Unreal Y axis (Odaiba: -1, north->south inversion).
     """
     offset_x_m: float
     offset_y_m: float
     offset_z_m: float
     x_sign: int = +1
-    y_sign: int = -1   # lanelet2 ENU → Unreal world Y 反転
+    y_sign: int = -1   # lanelet2 ENU -> Unreal world Y inversion
 
     def local_to_unreal_cm(self, local_x_m: float, local_y_m: float, height_m: float) -> tuple[float, float, float]:
         x = self.x_sign * (local_x_m - self.offset_x_m) * 100.0

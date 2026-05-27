@@ -1,4 +1,4 @@
-"""lanelet2(.osm) を解析して中間表現に変換するモジュール。"""
+"""Module for parsing a lanelet2 (.osm) file and converting it to an intermediate representation."""
 import os
 import warnings
 import xml.etree.ElementTree as ET
@@ -9,8 +9,8 @@ from lanelet2_traffic_light.corelib.ir.traffic_light_ir import (
 
 
 def _read_node(node_elem: ET.Element) -> Node:
-    """node 要素 → Node IR。local_x/local_y は必須、欠落時 KeyError。
-    ele タグはオプション (lanelet2 .osm の <tag k="ele">、欠落時 None)。
+    """Convert a node element to a Node IR. local_x/local_y are required; raises KeyError if missing.
+    The ele tag is optional (lanelet2 .osm <tag k="ele">; returns None if absent).
     """
     tags = {t.get("k"): t.get("v") for t in node_elem.findall("tag")}
     if "local_x" not in tags or "local_y" not in tags:
@@ -31,13 +31,13 @@ def _read_node(node_elem: ET.Element) -> Node:
 
 
 def parse_osm(osm_path: str) -> tuple[list[TrafficLightSpec], list[GroupSpec]]:
-    """lanelet2 .osm を解析。
+    """Parse a lanelet2 .osm file.
 
     Returns:
         (traffic_light_specs, group_specs)
 
-    way 単位の構造欠落（nd refs < 2, 不正な node 参照、座標タグ欠落）は
-    当該 way をスキップし `warnings.warn` で警告。
+    Ways with structural defects (nd refs < 2, invalid node references, missing coordinate tags)
+    are skipped with a `warnings.warn` warning.
     """
     if not os.path.exists(osm_path):
         raise FileNotFoundError(osm_path)

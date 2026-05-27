@@ -1,8 +1,8 @@
-"""SignID 生成戦略。初期実装は lanelet2 way_id をそのまま str 化する。
+"""SignID generation strategy. The initial implementation simply converts the lanelet2 way_id to a string.
 
-将来の差し替え候補:
-- MappingTableResolver: JSON 対応表で way_id → 任意 SignID
-- CompoundResolver: way_id + 命名規則 (例 "TL_<wayid>")
+Future replacement candidates:
+- MappingTableResolver: way_id -> arbitrary SignID via a JSON mapping table
+- CompoundResolver: way_id + naming convention (e.g. "TL_<wayid>")
 """
 from typing import Optional
 from lanelet2_traffic_light.corelib.ir.traffic_light_ir import TrafficLightSpec, GroupSpec

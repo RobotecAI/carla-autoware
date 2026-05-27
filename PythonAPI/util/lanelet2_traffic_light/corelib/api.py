@@ -1,7 +1,7 @@
-"""統合エントリーポイント。lanelet2 .osm → PlacementSpec のリストを返す。
+"""Unified entry point. Converts a lanelet2 .osm file into a list of PlacementSpecs.
 
-Editor フロントエンドはこの関数を呼び、得られた PlacementSpec を実 Actor 配置に
-変換する。
+The editor frontend calls this function and converts the resulting PlacementSpecs
+into actual Actor placements.
 """
 import time
 from dataclasses import dataclass, field
@@ -17,7 +17,7 @@ from lanelet2_traffic_light.corelib.ir.traffic_light_ir import (
 
 
 def _compute_ele_midpoint(ele_p0, ele_p1):
-    """p0/p1 の ele の中点。片方 None なら他方、両方 None なら None。"""
+    """Midpoint of ele between p0 and p1. Returns the non-None value if only one is None; returns None if both are None."""
     if ele_p0 is not None and ele_p1 is not None:
         return (ele_p0 + ele_p1) / 2.0
     if ele_p0 is not None:
@@ -45,9 +45,9 @@ def generate_placements(
     transformer: MgrsTransformer,
     bp_override: Optional[dict[str, str]] = None,
 ) -> tuple[list[PlacementSpec], list[GroupSpec], GenerationReport]:
-    """lanelet2 → PlacementSpec リスト + GroupSpec リスト + 実行レポート。
+    """lanelet2 -> list of PlacementSpecs + list of GroupSpecs + execution report.
 
-    bp_override: subtype -> bp_path の dict。プロファイル既定値より優先される。
+    bp_override: dict of subtype -> bp_path. Takes precedence over profile defaults.
     """
     start = time.time()
     report = GenerationReport()
@@ -57,17 +57,17 @@ def generate_placements(
     report.parsed_traffic_lights = len(tls)
     report.parsed_groups = len(groups)
 
-    # way_id -> GroupSpec 逆引き（SignID 戦略が group を参照したいケース用）
+    # Reverse lookup: way_id -> GroupSpec (for SignID strategies that need to reference the group)
     wayid_to_group: dict[int, GroupSpec] = {}
     for g in groups:
         for w in g.refers:
             wayid_to_group[w] = g
 
     placements: list[PlacementSpec] = []
-    seen_sign_ids: dict[str, int] = {}    # sign_id -> way_id (衝突検出)
+    seen_sign_ids: dict[str, int] = {}    # sign_id -> way_id (collision detection)
 
     for tl in tls:
-        # BP 解決
+        # Resolve BP
         try:
             bp_path = bp_override.get(tl.subtype) or profile.bp_class_for(tl.subtype)
         except KeyError as e:
@@ -77,7 +77,7 @@ def generate_placements(
 
         group_for_tl = wayid_to_group.get(tl.way_id)
 
-        # SignID 解決
+        # Resolve SignID
         sign_id = sign_id_resolver.resolve(tl, group_for_tl)
         if sign_id in seen_sign_ids:
             raise ValueError(
@@ -86,24 +86,24 @@ def generate_placements(
             )
         seen_sign_ids[sign_id] = tl.way_id
 
-        # 中心+yaw 推定
+        # Estimate center + yaw
         cx_m, cy_m, yaw_deg = estimate_center_and_yaw(tl, profile.yaw_offset_deg())
-        # 高さ: lanelet2 height は信号面サイズなので、subtype 別の pole_height を使う。
-        # Phase 4.2 で Odaiba 配置済 190 件の Z 分布から:
-        #   red_yellow_green (車両)  → median 11.76 m
-        #   red_green        (歩行者)→ median  9.18 m
-        # subtype 不明時は profile.default_pole_height_m() にフォールバック。
+        # Height: lanelet2 height represents the signal face size, so use per-subtype pole_height.
+        # Based on Z-distribution of 190 placed actors in Odaiba (confirmed in Phase 4.2):
+        #   red_yellow_green (vehicle)   -> median 11.76 m
+        #   red_green        (pedestrian)-> median  9.18 m
+        # Falls back to profile.default_pole_height_m() for unknown subtypes.
         z_m = profile.pole_height_m(tl.subtype)
 
         x_cm, y_cm, z_cm = transformer.local_to_unreal_cm(cx_m, cy_m, z_m)
 
-        # lanelet2 由来の代表点を計算 (p0/p1 中点)
+        # Compute representative point from lanelet2 (midpoint of p0/p1)
         lat_mid = (tl.p0.lat + tl.p1.lat) / 2.0
         lon_mid = (tl.p0.lon + tl.p1.lon) / 2.0
         local_x_mid = (tl.p0.local_x + tl.p1.local_x) / 2.0
         local_y_mid = (tl.p0.local_y + tl.p1.local_y) / 2.0
         ele_mid = _compute_ele_midpoint(tl.p0.ele, tl.p1.ele)
-        # mgrs_code は p0 を採用 (TL 両端の MGRS グリッドは通常同一)
+        # Use p0 for mgrs_code (MGRS grid is normally identical for both ends of a TL)
         mgrs_code = tl.p0.mgrs_code
 
         placements.append(PlacementSpec(

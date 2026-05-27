@@ -50,7 +50,7 @@ class PlacementSpec:
     group_relation_id: Optional[int] = None
     source_way_id: int = 0
     subtype: str = ""
-    # lanelet2 由来の代表点 (TL の p0/p1 中点)
+    # Representative point from lanelet2 (midpoint of TL's p0/p1)
     lat: float = 0.0
     lon: float = 0.0
     ele: Optional[float] = None
