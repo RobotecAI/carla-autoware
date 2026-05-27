@@ -37,38 +37,12 @@ EUW_ASSET_PATH = "/T4/Lanelet2TrafficLight/EUW_LaneletTrafficLight.EUW_LaneletTr
 
 
 # ---------------------------------------------------------------------------
-# Run scripts: Quick (smoke test, first 5) と Full (all ~522)
-# 共通テンプレートで生成。snap_to_existing_mesh=True で既存メッシュに pivot 一致。
-# ---------------------------------------------------------------------------
-
-def _build_run_script(limit):
-    """Build the Python command string for the Quick/Full Run menu entries.
-
-    Args:
-        limit: place only the first `limit` placements when an int; all when None.
-    """
-    limit_expr = "None" if limit is None else str(limit)
-    return f'''
-import os
-import unreal
-try:
-    from lanelet2_traffic_light.frontend_editor.run_placement import run_placement
-except Exception as e:
-    unreal.log_error(f"lanelet2_traffic_light import failed: {{e}}")
-    raise
-run_placement(os.environ.get("LANELET2_OSM_PATH", ""), limit={limit_expr})
-'''
-
-
-FULL_RUN_SCRIPT = _build_run_script(None)
-
-
 # ---------------------------------------------------------------------------
 # Menu registration
 # ---------------------------------------------------------------------------
 
 def _register_menu_entries():
-    """Register the Tool menu entries (Widget, Full Run) under LevelEditor.MainMenu.Tools."""
+    """Register the Tool menu entry (the EUW) under LevelEditor.MainMenu.Tools."""
     menus = unreal.ToolMenus.get()
     main_menu = menus.find_menu("LevelEditor.MainMenu.Tools")
     if main_menu is None:
@@ -77,12 +51,12 @@ def _register_menu_entries():
 
     section_name = "LaneletTrafficLight"
 
-    # Entry 1: open the Editor Utility Widget (GUI for OSM path + placement).
+    # Open the Editor Utility Widget (GUI for OSM path + placement).
     entry_widget = unreal.ToolMenuEntry(
         name="LaneletTL_OpenWidget",
         type=unreal.MultiBlockType.MENU_ENTRY,
     )
-    entry_widget.set_label("Generate Traffic Lights from lanelet2... (Widget)")
+    entry_widget.set_label("Generate Traffic Lights from lanelet2...")
     entry_widget.set_tool_tip(
         "Open the EUW_LaneletTrafficLight widget to enter an OSM path and run "
         "placement from a GUI."
@@ -98,26 +72,6 @@ def _register_menu_entries():
         ),
     )
     main_menu.add_menu_entry(section_name, entry_widget)
-
-    # Entry 2: Full-Run (places all parsed traffic lights).
-    # Takes a few minutes for large maps. Save the level with Ctrl+S afterwards.
-    entry_full = unreal.ToolMenuEntry(
-        name="LaneletTL_FullRun",
-        type=unreal.MultiBlockType.MENU_ENTRY,
-    )
-    entry_full.set_label("Generate Traffic Lights from lanelet2 (Full Run, all)")
-    entry_full.set_tool_tip(
-        "Parse the lanelet2 OSM set via the LANELET2_OSM_PATH environment "
-        "variable and spawn ALL parsed traffic lights into the current level. "
-        "Takes a few minutes for large maps. Save the level with Ctrl+S "
-        "after verifying the result."
-    )
-    entry_full.set_string_command(
-        type=unreal.ToolMenuStringCommandType.PYTHON,
-        custom_type=unreal.Name(""),
-        string=FULL_RUN_SCRIPT.strip(),
-    )
-    main_menu.add_menu_entry(section_name, entry_full)
 
     menus.refresh_all_widgets()
     unreal.log("init_unreal: lanelet2_traffic_light menu entries registered.")
