@@ -161,3 +161,32 @@ def hide_existing_pedestrian_meshes(label_prefixes=("TrafficLightB", "Pedestrian
     _log("%s %d existing meshes (prefixes=%s, delete=%s)"
          % ("deleted" if delete else "hid", n, ",".join(label_prefixes), delete))
     return n
+
+
+def show_existing_pedestrian_meshes(label_prefixes=("TrafficLightB", "Pedestrian_Lights")):
+    """Reverse of hide_existing_pedestrian_meshes: un-hide matching actors.
+
+    Restores both in-game and editor viewport visibility for the original
+    pedestrian-signal meshes. Has no effect on actors that were deleted
+    (delete=True is irreversible).
+    """
+    actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    n = 0
+    for a in list(actor_subsys.get_all_level_actors()):
+        try:
+            label = a.get_actor_label()
+        except Exception:
+            continue
+        if not any(label.startswith(p) for p in label_prefixes):
+            continue
+        try:
+            a.set_actor_hidden_in_game(False)
+        except Exception:
+            pass
+        try:
+            a.set_is_temporarily_hidden_in_editor(False)
+        except Exception:
+            pass
+        n += 1
+    _log("shown %d existing meshes (prefixes=%s)" % (n, ",".join(label_prefixes)))
+    return n
