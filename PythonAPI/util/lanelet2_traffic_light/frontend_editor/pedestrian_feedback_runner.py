@@ -125,3 +125,39 @@ def run_pedestrian_feedback(osm_path=None):
     _log("NEXT set LANELET2_OSM_PATH=%s, reopen editor / run placement, "
          "verify TLP_ appear near TrafficLightB XY." % out_path)
     return out_path
+
+
+def hide_existing_pedestrian_meshes(label_prefixes=("TrafficLightB", "Pedestrian_Lights"),
+                                    delete=False):
+    """Hide (or delete) the map's original pedestrian-signal meshes.
+
+    The canonical TLP_ actors now overlap and are partly masked by the original
+    meshes (TrafficLightB* on NishiShinjuku, Pedestrian_Lights_* on Odaiba).
+    Hiding (default) is reversible (in-game + editor visibility); delete=True is
+    permanent and requires saving the level. Vehicle meshes (TrafficLightsA*,
+    Traffic_Lights*) and generated TLP_/TLV_ actors are not matched.
+    """
+    actor_subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    n = 0
+    for a in list(actor_subsys.get_all_level_actors()):
+        try:
+            label = a.get_actor_label()
+        except Exception:
+            continue
+        if not any(label.startswith(p) for p in label_prefixes):
+            continue
+        if delete:
+            actor_subsys.destroy_actor(a)
+        else:
+            try:
+                a.set_actor_hidden_in_game(True)
+            except Exception:
+                pass
+            try:
+                a.set_is_temporarily_hidden_in_editor(True)
+            except Exception:
+                pass
+        n += 1
+    _log("%s %d existing meshes (prefixes=%s, delete=%s)"
+         % ("deleted" if delete else "hid", n, ",".join(label_prefixes), delete))
+    return n
