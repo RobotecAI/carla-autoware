@@ -61,3 +61,24 @@ def test_build_and_insert_well_formed():
                for t in ways[0].findall("tag"))
     rels = root.findall("relation")
     assert len(rels) == 1
+
+
+def test_pole_height_tag_emitted_when_set():
+    import xml.etree.ElementTree as ET
+    sig = pf.PedSignal(local_x=10.0, local_y=20.0, ele=44.0, placed_yaw_deg=0.0,
+                       lat=35.0, lon=139.0, mgrs_code="X", pole_height=44.22)
+    out = pf.build_feedback_osm('<osm version="0.6"></osm>', [sig], id_base=10_000_000,
+                                yaw_offset_deg=-90.0, segment_length_m=0.5)
+    way = ET.fromstring(out).find("way")
+    ph = [t.get("v") for t in way.findall("tag") if t.get("k") == "pole_height"]
+    assert ph == ["44.22"]
+
+
+def test_no_pole_height_tag_when_none():
+    import xml.etree.ElementTree as ET
+    sig = pf.PedSignal(local_x=10.0, local_y=20.0, ele=44.0, placed_yaw_deg=0.0,
+                       lat=35.0, lon=139.0, mgrs_code="X")  # pole_height defaults None
+    out = pf.build_feedback_osm('<osm version="0.6"></osm>', [sig], id_base=10_000_000,
+                                yaw_offset_deg=-90.0, segment_length_m=0.5)
+    way = ET.fromstring(out).find("way")
+    assert not any(t.get("k") == "pole_height" for t in way.findall("tag"))

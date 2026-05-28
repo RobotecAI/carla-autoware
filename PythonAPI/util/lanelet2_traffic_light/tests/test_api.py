@@ -144,6 +144,19 @@ def test_placement_carries_local_xy_midpoint():
         assert abs(p.local_y - expected_y) < 1e-6
 
 
+def test_resolve_pole_height_tag_overrides_profile():
+    """A per-way pole_height tag overrides the profile pole height; absence falls back."""
+    from lanelet2_traffic_light.corelib.api import _resolve_pole_height
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import TrafficLightSpec, Node
+    n = Node(1, 0.0, 0.0, 0.0, 0.0, "M", 0.0)
+    with_tag = TrafficLightSpec(way_id=1, subtype="red_green", p0=n, p1=n, height=0.0,
+                                raw_tags={"pole_height": "44.22"})
+    without = TrafficLightSpec(way_id=2, subtype="red_green", p0=n, p1=n, height=0.0,
+                               raw_tags={})
+    assert _resolve_pole_height(with_tag, PROFILE_JP) == 44.22
+    assert _resolve_pole_height(without, PROFILE_JP) == PROFILE_JP.pole_height_m("red_green")
+
+
 def test_placement_carries_mgrs_code_from_p0():
     from lanelet2_traffic_light.corelib.api import generate_placements
     from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm

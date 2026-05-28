@@ -94,13 +94,19 @@ def run_pedestrian_feedback(osm_path=None):
          % (parsed.max_id, len(parsed.nodes), len(parsed.vehicle_tl_nodes), diff))
 
     signals = []
-    for (x, y, z, yaw) in meshes:
-        lx, ly, _h = tf.unreal_cm_to_local(x, y, z)
-        ele = estimate_ped_ele((lx, ly), parsed.vehicle_tl_nodes, diff)
+    for i, (x, y, z, yaw) in enumerate(meshes):
+        # abs_h round-trips the mesh's own UE Z (forward transform reproduces it
+        # exactly), so the canonical mesh lands at the original TrafficLightB Z.
+        lx, ly, abs_h = tf.unreal_cm_to_local(x, y, z)
+        est = estimate_ped_ele((lx, ly), parsed.vehicle_tl_nodes, diff)  # alt Z source
         lat, lon, mgrs = nearest_latlon((lx, ly), parsed.nodes)
+        if i < 3:
+            _log("z-source mesh_z_cm=%.1f mesh_abs_h_m=%.2f vehicle_est_m=%.2f (using mesh_abs_h)"
+                 % (z, abs_h, est))
         signals.append(PedSignal(
-            local_x=lx, local_y=ly, ele=ele,
+            local_x=lx, local_y=ly, ele=abs_h,
             placed_yaw_deg=yaw, lat=lat, lon=lon, mgrs_code=mgrs,
+            pole_height=abs_h,
         ))
 
     id_base = allocate_id_base(parsed.max_id, num_new=4 * len(signals))

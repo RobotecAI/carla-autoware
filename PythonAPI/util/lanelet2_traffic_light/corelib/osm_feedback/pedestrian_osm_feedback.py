@@ -239,6 +239,10 @@ class PedSignal:
     lat: float
     lon: float
     mgrs_code: str
+    # Absolute placement height (m, same datum as the MgrsTransformer Z offset).
+    # Emitted as a per-way "pole_height" tag and honored by api._resolve_pole_height
+    # so placement Z does not fall back to the (Odaiba-specific) profile height.
+    pole_height: float = None
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +338,8 @@ def build_feedback_osm(
         nd1.set("ref", str(node1_id))
         way.append(_make_tag("type", "traffic_light"))
         way.append(_make_tag("subtype", subtype))
+        if sig.pole_height is not None:
+            way.append(_make_tag("pole_height", str(sig.pole_height)))
 
         # Relation
         rel = ET.Element("relation")

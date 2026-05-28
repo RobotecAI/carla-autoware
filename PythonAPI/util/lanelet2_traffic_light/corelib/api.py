@@ -38,6 +38,25 @@ class GenerationReport:
     duration_seconds: float = 0.0
 
 
+def _resolve_pole_height(tl, profile) -> float:
+    """Absolute placement height (m) for a traffic light.
+
+    A per-signal ``pole_height`` way tag (absolute height in the same datum as
+    the MgrsTransformer Z offset) overrides the profile value. Used by the
+    mesh->osm pedestrian feedback: on maps whose MGRS Z offset is non-zero the
+    Odaiba-derived profile heights place signals underground, so fed-back ways
+    carry an explicit absolute height. Falls back to the per-subtype profile
+    pole height.
+    """
+    raw = tl.raw_tags.get("pole_height") if getattr(tl, "raw_tags", None) else None
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    return profile.pole_height_m(tl.subtype)
+
+
 def generate_placements(
     osm_path: str,
     profile: TrafficLightProfile,
@@ -93,7 +112,7 @@ def generate_placements(
         #   red_yellow_green (vehicle)   -> median 11.76 m
         #   red_green        (pedestrian)-> median  9.18 m
         # Falls back to profile.default_pole_height_m() for unknown subtypes.
-        z_m = profile.pole_height_m(tl.subtype)
+        z_m = _resolve_pole_height(tl, profile)
 
         x_cm, y_cm, z_cm = transformer.local_to_unreal_cm(cx_m, cy_m, z_m)
 
