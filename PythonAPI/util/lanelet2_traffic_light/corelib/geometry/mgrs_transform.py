@@ -35,3 +35,19 @@ class MgrsTransformer:
         y = self.y_sign * (local_y_m - self.offset_y_m) * 100.0
         z = (height_m - self.offset_z_m) * 100.0
         return (x, y, z)
+
+    def unreal_cm_to_local(self, x_cm: float, y_cm: float, z_cm: float) -> tuple[float, float, float]:
+        """Inverse of local_to_unreal_cm: Unreal cm -> lanelet2 local (m).
+
+        Args:
+            x_cm: Unreal world X coordinate in cm.
+            y_cm: Unreal world Y coordinate in cm.
+            z_cm: Unreal world Z coordinate (height) in cm.
+
+        Returns:
+            Tuple of (local_x_m, local_y_m, height_m) in lanelet2 local coordinates.
+        """
+        local_x_m = x_cm / (self.x_sign * 100.0) + self.offset_x_m
+        local_y_m = y_cm / (self.y_sign * 100.0) + self.offset_y_m
+        height_m = z_cm / 100.0 + self.offset_z_m
+        return (local_x_m, local_y_m, height_m)
