@@ -522,6 +522,8 @@ def _spawn_or_update(spec: PlacementSpec,
             _zero_out_static_mesh_relative_rotation(existing)
             if snapped_mesh_asset is not None:
                 _override_static_mesh(existing, snapped_mesh_asset)
+                if "Pedestrian" in spec.actor_class_path:
+                    _clear_static_mesh_material_overrides(existing)
         return existing, False, snap_info
 
     # Skip snap failures before new spawn
@@ -548,6 +550,8 @@ def _spawn_or_update(spec: PlacementSpec,
         _zero_out_static_mesh_relative_rotation(actor)
         if snapped_mesh_asset is not None:
             _override_static_mesh(actor, snapped_mesh_asset)
+            if "Pedestrian" in spec.actor_class_path:
+                _clear_static_mesh_material_overrides(actor)
 
     # Write sign_id to TrafficLightComponent (so it can be found later by find_actor_by_sign_id)
     tlc = actor.get_traffic_light_component()
@@ -588,6 +592,35 @@ def _override_static_mesh(actor, new_mesh) -> None:
                 f"_override_static_mesh: set_static_mesh failed on "
                 f"'{actor.get_actor_label()}': {e}"
             )
+
+
+def _clear_static_mesh_material_overrides(actor) -> None:
+    """Remove per-component material overrides so the snapped mesh's own default
+    materials are used.
+
+    Pedestrian SceneFigure BPs are duplicated from the canonical
+    BP_PedestrianTrafficLight, whose StaticMeshComponent carries leftover
+    canonical material overrides (Walk/Frame/Stop, slot 0-2). Snap mesh-override
+    swaps the mesh to Scene_NNN but the component's index-based overrides remain
+    and mask the Scene_NNN Overlapped_Green/Body materials — which breaks the
+    BP's "find the Overlapped_Green element" lookup. Clearing the overrides
+    restores the Scene_NNN defaults so the lookup (and figure override) work.
+    """
+    try:
+        comps = actor.get_components_by_class(unreal.StaticMeshComponent)
+    except Exception:
+        return
+    for comp in comps:
+        try:
+            comp.empty_override_materials()
+        except Exception:
+            # Fallback: reset each slot to the mesh's own default material.
+            try:
+                sm = comp.get_editor_property("static_mesh")
+                for i in range(comp.get_num_materials()):
+                    comp.set_material(i, sm.get_material(i) if sm is not None else None)
+            except Exception:
+                pass
 
 
 def _zero_out_static_mesh_relative_rotation(actor) -> None:
