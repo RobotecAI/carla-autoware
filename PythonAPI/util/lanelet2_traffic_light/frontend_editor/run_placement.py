@@ -17,6 +17,9 @@ from lanelet2_traffic_light.frontend_editor.editor_placer import (
 from lanelet2_traffic_light.frontend_editor.bp_factory import (
     ensure_subtype_bps, ensure_group_bp,
 )
+from lanelet2_traffic_light.frontend_editor.bp_parent_override import (
+    parent_bp_override_for_map,
+)
 from lanelet2_traffic_light.frontend_editor.osm_validation import validate_osm_path
 
 
@@ -70,7 +73,8 @@ def run_placement(osm_path, limit=None):
     ))
 
     unreal.log(f"[lanelet2_tl] ensuring subtype BPs for map '{map_name}'...")
-    bp_override = ensure_subtype_bps(PROFILE_JP, map_name)
+    parent_override = parent_bp_override_for_map(map_name)
+    bp_override = ensure_subtype_bps(PROFILE_JP, map_name, parent_override=parent_override)
     for st, bp in bp_override.items():
         unreal.log(f"[lanelet2_tl]   subtype={st} -> {bp}")
 

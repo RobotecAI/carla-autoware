@@ -139,6 +139,7 @@ def ensure_subtype_bps(
     profile,
     map_name: str,
     output_dir: Optional[str] = None,
+    parent_override: Optional[dict] = None,
 ) -> dict:
     """Ensure derived BPs for each subtype in the profile and return {subtype: target_path}.
 
@@ -159,7 +160,8 @@ def ensure_subtype_bps(
     subtypes = list(profile._subtype_to_bp.keys())
     for subtype in subtypes:
         target = derive_subtype_bp_path(subtype, map_name, output_dir)
-        parent = profile.parent_bp_path_for(subtype)
+        # parent_override (per-map) takes precedence over the profile default.
+        parent = (parent_override or {}).get(subtype) or profile.parent_bp_path_for(subtype)
         try:
             created = create_derived_bp(parent, target)
             if created:
