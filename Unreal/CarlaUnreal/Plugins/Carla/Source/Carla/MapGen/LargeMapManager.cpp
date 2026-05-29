@@ -16,6 +16,10 @@
 
 #include <util/ue-header-guard-begin.h>
 #include "Engine/WorldComposition.h"
+#if WITH_EDITOR
+#include "EditorViewportClient.h"
+#include "Editor.h"
+#endif
 #include "Engine/ObjectLibrary.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -922,6 +926,29 @@ void ALargeMapManager::ConvertDormantToActiveActors()
 void ALargeMapManager::CheckIfRebaseIsNeeded()
 {
   TRACE_CPUPROFILER_EVENT_SCOPE(ALargeMapManager::CheckIfRebaseIsNeeded);
+
+#if WITH_EDITOR
+  // In editor mode (not PIE), rebase based on the editor viewport camera position
+  // because ActorsToConsider contains no hero actors when no game is running.
+  if (GEditor && !GEditor->IsPlayingSessionInEditor())
+  {
+    UWorld* World = GetWorld();
+    for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
+    {
+      if (!VC || !VC->IsLevelEditorClient()) continue;
+      FVector CameraLocation = VC->GetViewLocation();
+      if (CameraLocation.SizeSquared() > RebaseOriginDistanceSquared)
+      {
+        TileID TileId = GetTileID(CurrentOriginD + FDVector(CameraLocation));
+        FVector NewOrigin = GetTileLocation(TileId);
+        World->SetNewWorldOrigin(FIntVector(NewOrigin));
+        break;
+      }
+    }
+    return;
+  }
+#endif
+
   if(ActorsToConsider.Num() > 0)
   {
     UWorld* World = GetWorld();
