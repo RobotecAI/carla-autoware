@@ -92,6 +92,7 @@ public:
 
   // Called every frame
   void Tick(float DeltaTime) override;
+  virtual bool ShouldTickIfViewportsOnly() const override { return true; }
 
   UFUNCTION(BlueprintCallable, Category = "Large Map Manager")
   void GenerateMap(FString InAssetsPath);
