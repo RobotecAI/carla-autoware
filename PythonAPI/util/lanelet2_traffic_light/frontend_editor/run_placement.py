@@ -113,6 +113,7 @@ def run_placement(osm_path, limit=None):
             "group_bp_path" : group_bp_path,
         },
         group_bp_path=group_bp_path,
+        map_name=map_name,
     )
     unreal.log(
         f"[lanelet2_tl] result: created={preport.created} updated={preport.updated} "

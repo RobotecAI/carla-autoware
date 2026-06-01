@@ -20,6 +20,7 @@ from lanelet2_traffic_light.frontend_editor.snap_stats import (
 from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
     should_skip_mesh_override,
 )
+from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -311,23 +312,24 @@ def _collect_pedestrian_mesh_materials() -> list:
     return aggregate_material_stats(records)
 
 
-def _label_prefixes_for_bp_class(bp_class_path: str) -> tuple:
+def _label_prefixes_for_bp_class(bp_class_path: str, map_name: str = None) -> tuple:
     """Determine the existing mesh label prefix that corresponds to a BP class path.
 
-    Existing signal meshes in Odaiba.umap come in two families, each with a
-    different label prefix depending on subtype:
+    Existing signal meshes come in two families, with map-specific naming:
 
-    | subtype           | BP class              | Existing mesh naming  |
-    |-------------------|-----------------------|-----------------------|
-    | red_yellow_green  | BP_OdaibaVehicleTL    | Traffic_Lights_*      |
-    | red_green         | BP_OdaibaPedestrianTL | Pedestrian_Lights_*   |
+    | subtype           | BP class              | Odaiba mesh      | NishiShinjuku    |
+    |-------------------|-----------------------|------------------|------------------|
+    | red_yellow_green  | BP_*VehicleTL         | Traffic_Lights_* | TrafficLightsA*  |
+    | red_green         | BP_*PedestrianTL      | Pedestrian_Lights_* | (snap=False)  |
 
     Prefixes are kept strictly separate to prevent a pedestrian BP from
-    accidentally snapping to a vehicle mesh.
+    accidentally snapping to a vehicle mesh. The vehicle prefix is map-aware
+    (NishiShinjuku uses TrafficLightsA*); pedestrians keep Pedestrian_Lights.
     """
+    prof = get_map_profile(map_name)
     if "Pedestrian" in bp_class_path:
-        return ("Pedestrian_Lights",)
-    return ("Traffic_Lights",)
+        return prof.pedestrian_mesh_prefixes
+    return prof.vehicle_mesh_prefixes
 
 
 def _label_prefix_for_subtype(subtype: str) -> str:
@@ -416,7 +418,9 @@ def _spawn_or_update(spec: PlacementSpec,
                      snap_to_existing_mesh: bool = False,
                      snap_radius_cm: float = 300.0,
                      skip_when_snap_fails: bool = True,
-                     mesh_z_stats: Optional[dict] = None) -> tuple:
+                     mesh_z_stats: Optional[dict] = None,
+                     map_name: str = None,
+                     transplant: Optional[dict] = None) -> tuple:
     """Update location/rotation if spec.sign_id already exists in the level; otherwise spawn new.
 
     Core idempotency logic: running with the same sign_id any number of times
@@ -472,12 +476,24 @@ def _spawn_or_update(spec: PlacementSpec,
     snapped_mesh_asset = None  # StaticMesh asset to adopt in snap mode
     snap_target_found = False
     snap_info = None  # snap detail dict (for report output & reverse-mismatch aggregation)
+    # Vehicle transplant: snap for pose but swap the mesh to a per-map T4 mesh
+    # (maps whose native vehicle meshes lack per-color slots, e.g. NishiShinjuku).
+    # Pedestrians never transplant.
+    use_transplant = transplant is not None and "Pedestrian" not in spec.actor_class_path
     if snap_to_existing_mesh:
-        label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path)
-        nearest, dist = _find_nearest_existing_signal_mesh(
-            location, snap_radius_cm, label_prefixes,
-            mesh_z_stats=mesh_z_stats,
-        )
+        label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path, map_name)
+        # When transplanting, the spec Z is unreliable (profile pole height) but the
+        # mesh Z is adopted via snap, so the Z-validity gate is bypassed (XY only).
+        if use_transplant and transplant.get("ignore_snap_z_gate"):
+            nearest, dist = _find_nearest_existing_signal_mesh(
+                location, snap_radius_cm, label_prefixes,
+                max_z_diff_cm=float("inf"), mesh_z_stats=None,
+            )
+        else:
+            nearest, dist = _find_nearest_existing_signal_mesh(
+                location, snap_radius_cm, label_prefixes,
+                mesh_z_stats=mesh_z_stats,
+            )
         if nearest is not None:
             snap_target_found = True
             snapped_loc = nearest.get_actor_location()
@@ -520,7 +536,9 @@ def _spawn_or_update(spec: PlacementSpec,
         existing.set_actor_rotation(rotation, teleport_physics=True)
         if snap_to_existing_mesh:
             _zero_out_static_mesh_relative_rotation(existing)
-            if snapped_mesh_asset is not None:
+            if use_transplant and snap_target_found:
+                _apply_vehicle_transplant(existing, rotation, transplant)
+            elif snapped_mesh_asset is not None:
                 _override_static_mesh(existing, snapped_mesh_asset)
                 if "Pedestrian" in spec.actor_class_path:
                     _clear_static_mesh_material_overrides(existing)
@@ -548,7 +566,9 @@ def _spawn_or_update(spec: PlacementSpec,
     # target's mesh to align pivot positions.
     if snap_to_existing_mesh:
         _zero_out_static_mesh_relative_rotation(actor)
-        if snapped_mesh_asset is not None:
+        if use_transplant and snap_target_found:
+            _apply_vehicle_transplant(actor, rotation, transplant)
+        elif snapped_mesh_asset is not None:
             _override_static_mesh(actor, snapped_mesh_asset)
             if "Pedestrian" in spec.actor_class_path:
                 _clear_static_mesh_material_overrides(actor)
@@ -621,6 +641,58 @@ def _clear_static_mesh_material_overrides(actor) -> None:
                     comp.set_material(i, sm.get_material(i) if sm is not None else None)
             except Exception:
                 pass
+
+
+def _apply_vehicle_transplant(actor, snapped_rotation, transplant: dict) -> None:
+    """Replace the snapped vehicle mesh with the per-map transplant mesh and
+    apply the de-risked pose/position corrections.
+
+    Used for maps (e.g. NishiShinjuku) whose native vehicle meshes lack per-color
+    material slots. The actor snaps to the native mesh for pose, but its StaticMesh
+    is swapped to a T4 mesh that *does* have Green/Yellow/Red slots so the existing
+    BP_VehicleTrafficLight lighting works.
+
+    Inc1 de-risk findings baked in here:
+      - The mesh-orientation offset is composed into the ACTOR world rotation, not
+        the component relative rotation: set_static_mesh / empty_override_materials
+        trigger a BP construction-script rerun that resets component relative
+        rotation to the BP default, so a component offset would be wiped.
+      - World Z offset corrects the pivot height difference; a local offset (mesh
+        frame) corrects depth/lateral pivot difference.
+      - Material overrides are cleared so the transplant mesh's own Green/Yellow/Red
+        materials drive the lighting (the canonical BP leaves index-based overrides).
+    """
+    mesh = unreal.load_asset(transplant["mesh"])
+    if mesh is not None:
+        _override_static_mesh(actor, mesh)
+        _clear_static_mesh_material_overrides(actor)
+        scale = transplant.get("scale", 1.0)
+        if scale != 1.0:
+            for c in actor.get_components_by_class(unreal.StaticMeshComponent):
+                try:
+                    c.set_relative_scale3d(unreal.Vector(scale, scale, scale))
+                except Exception:
+                    pass
+    # Pose: bake the mesh-convention offset into the ACTOR world rotation.
+    p, y, r = transplant.get("relrot_deg", (0.0, 0.0, 0.0))
+    offset = unreal.Rotator(roll=r, pitch=p, yaw=y)
+    actor.set_actor_rotation(
+        unreal.MathLibrary.compose_rotators(offset, snapped_rotation),
+        teleport_physics=True,
+    )
+    # Depth/lateral pivot correction in the mesh's local frame.
+    lx, ly, lz = transplant.get("local_offset_cm", (0.0, 0.0, 0.0))
+    if (lx, ly, lz) != (0.0, 0.0, 0.0):
+        try:
+            actor.add_actor_local_offset(unreal.Vector(lx, ly, lz), False, True)
+        except Exception:
+            pass
+    # Height pivot correction in world Z (component is rotated, so local Z is unusable).
+    wz = transplant.get("world_z_offset_cm", 0.0)
+    if wz != 0.0:
+        loc = actor.get_actor_location()
+        actor.set_actor_location(
+            unreal.Vector(loc.x, loc.y, loc.z + wz), False, True)
 
 
 def _zero_out_static_mesh_relative_rotation(actor) -> None:
@@ -991,6 +1063,7 @@ def place_from_specs(
     report_path: Optional[str] = None,
     report_metadata: Optional[dict] = None,
     group_bp_path: Optional[str] = None,
+    map_name: str = None,
 ) -> PlacementReport:
     """Idempotently place the list of PlacementSpecs into the level.
 
@@ -1068,6 +1141,9 @@ def place_from_specs(
         # Set of existing mesh labels adopted in snap mode (for reverse-mismatch detection)
         used_mesh_labels: set = set()
 
+        # Per-map vehicle transplant config (None for maps that adopt the native mesh).
+        transplant = get_map_profile(map_name).vehicle_transplant
+
         for spec in placements:
             try:
                 actor, was_created, snap_info = _spawn_or_update(
@@ -1076,6 +1152,8 @@ def place_from_specs(
                     snap_radius_cm=snap_radius_cm,
                     skip_when_snap_fails=skip_when_snap_fails,
                     mesh_z_stats=mesh_z_stats,
+                    map_name=map_name,
+                    transplant=transplant,
                 )
                 if snap_info is not None:
                     used_mesh_labels.add(snap_info["label"])
