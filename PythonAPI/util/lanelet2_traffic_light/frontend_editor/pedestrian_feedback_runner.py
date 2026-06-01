@@ -190,3 +190,20 @@ def show_existing_pedestrian_meshes(label_prefixes=("TrafficLightB", "Pedestrian
         n += 1
     _log("shown %d existing meshes (prefixes=%s)" % (n, ",".join(label_prefixes)))
     return n
+
+
+def run_pedestrian_feedback_summary(osm_path=None):
+    """EUW wrapper: run the mesh->osm feedback; return the output OSM path on success.
+
+    Returns the absolute path of the written *.pedestrianSignalAdded.osm so the EUW
+    can put it back into the OSM-path field, or an "ERROR: ..." string on failure.
+    Never raises.
+    """
+    try:
+        out = run_pedestrian_feedback(osm_path)
+        if not out:
+            return ("ERROR: no output written (check the OSM path, the open map, and "
+                    "the TrafficLightB meshes; see the Output Log).")
+        return out
+    except Exception as e:
+        return f"ERROR: {e}"
