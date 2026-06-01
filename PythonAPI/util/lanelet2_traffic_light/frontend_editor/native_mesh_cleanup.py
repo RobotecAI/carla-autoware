@@ -143,7 +143,7 @@ def delete_snapped_native_meshes(confirm=False,
 
     Requires `confirm=True`; otherwise it only reports the count that would be
     deleted (dry run). Persisting the deletion requires saving the level.
-    Returns the number of deleted actors (0 on dry run).
+    Returns the number of deleted actors, or the would-delete count on a dry run.
     """
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     actors = list(eas.get_all_level_actors())
@@ -154,7 +154,7 @@ def delete_snapped_native_meshes(confirm=False,
     if not confirm:
         _log(f"delete DRY-RUN: map={map_name} would delete {len(targets)} co-located "
              f"native meshes. Pass confirm=True to delete (irreversible).")
-        return 0
+        return len(targets)
     for a in targets:
         try:
             eas.destroy_actor(a)
@@ -163,3 +163,43 @@ def delete_snapped_native_meshes(confirm=False,
     _log(f"delete: map={map_name} deleted={len(targets)} (IRREVERSIBLE; "
          f"save the level to persist)")
     return len(targets)
+
+
+# --- EUW summary wrappers (return a one-line status string; never raise) ---------
+
+def hide_snapped_native_meshes_summary():
+    """EUW wrapper: hide co-located native meshes; return a one-line status string."""
+    try:
+        n = hide_snapped_native_meshes()
+        return f"Hid {n} native meshes (lanelet2-unregistered ones kept visible)."
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def show_native_meshes_summary():
+    """EUW wrapper: un-hide native meshes; return a one-line status string."""
+    try:
+        n = show_native_meshes()
+        return f"Un-hid {n} native meshes."
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def delete_snapped_native_meshes_summary():
+    """EUW wrapper: confirm via a Yes/No dialog, then delete (IRREVERSIBLE)."""
+    try:
+        count = delete_snapped_native_meshes(confirm=False)  # dry-run count
+        if count == 0:
+            return "No co-located native meshes to delete."
+        result = unreal.EditorDialog.show_message(
+            "Delete native meshes",
+            f"Delete {count} native meshes under placed signals?\n"
+            f"This is irreversible (save the level to persist).",
+            unreal.AppMsgType.YES_NO,
+        )
+        if result != unreal.AppReturnType.YES:
+            return "Cancelled."
+        deleted = delete_snapped_native_meshes(confirm=True)
+        return f"Deleted {deleted} native meshes. Save the level (Ctrl+S) to persist."
+    except Exception as e:
+        return f"ERROR: {e}"
