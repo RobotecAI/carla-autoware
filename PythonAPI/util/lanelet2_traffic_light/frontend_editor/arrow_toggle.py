@@ -17,7 +17,7 @@ def set_arrows_enabled(enabled: bool) -> int:
     """
     import unreal
 
-    eas = unreal.get_editor_actor_subsystem()
+    eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     count = 0
     for actor in eas.get_all_level_actors():
         if not is_vehicle_tl_label(actor.get_actor_label()):
