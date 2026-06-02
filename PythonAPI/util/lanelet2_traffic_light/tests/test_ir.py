@@ -89,3 +89,22 @@ def test_placement_spec_accepts_lanelet2_fields():
     assert p.local_x == 89430.77
     assert p.local_y == 43191.12
     assert p.mgrs_code == "54SUE894431"
+
+
+def test_placement_spec_arrows_defaults_empty():
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec
+    spec = PlacementSpec(
+        sign_id="x", actor_class_path="bp",
+        location_cm=(0.0, 0.0, 0.0), rotation_deg=(0.0, 0.0, 0.0),
+    )
+    assert spec.arrows == ()
+
+
+def test_placement_spec_arrows_holds_color_direction():
+    from lanelet2_traffic_light.corelib.ir.traffic_light_ir import PlacementSpec
+    spec = PlacementSpec(
+        sign_id="x", actor_class_path="bp",
+        location_cm=(0.0, 0.0, 0.0), rotation_deg=(0.0, 0.0, 0.0),
+        arrows=(("green", "right"), ("green", "straight")),
+    )
+    assert spec.arrows == (("green", "right"), ("green", "straight"))

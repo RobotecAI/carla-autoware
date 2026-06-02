@@ -57,3 +57,7 @@ class PlacementSpec:
     local_x: float = 0.0
     local_y: float = 0.0
     mgrs_code: str = ""
+    # Green-arrow bulbs from lanelet2 light_bulbs, as (color, direction) pairs.
+    # Color is preserved (option B); the lighting side filters to green. Direction
+    # is one of "left"/"straight"/"right". Empty when the signal has no arrows.
+    arrows: tuple[tuple[str, str], ...] = ()
