@@ -21,6 +21,9 @@ from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
     should_skip_mesh_override,
 )
 from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
+    green_arrow_dirs, active_arrow_flags, select_vehicle_transplant,
+)
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -420,7 +423,8 @@ def _spawn_or_update(spec: PlacementSpec,
                      skip_when_snap_fails: bool = True,
                      mesh_z_stats: Optional[dict] = None,
                      map_name: str = None,
-                     transplant: Optional[dict] = None) -> tuple:
+                     transplant: Optional[dict] = None,
+                     transplant_arrow: Optional[dict] = None) -> tuple:
     """Update location/rotation if spec.sign_id already exists in the level; otherwise spawn new.
 
     Core idempotency logic: running with the same sign_id any number of times
@@ -476,10 +480,11 @@ def _spawn_or_update(spec: PlacementSpec,
     snapped_mesh_asset = None  # StaticMesh asset to adopt in snap mode
     snap_target_found = False
     snap_info = None  # snap detail dict (for report output & reverse-mismatch aggregation)
-    # Vehicle transplant: snap for pose but swap the mesh to a per-map T4 mesh
-    # (maps whose native vehicle meshes lack per-color slots, e.g. NishiShinjuku).
-    # Pedestrians never transplant.
-    use_transplant = transplant is not None and "Pedestrian" not in spec.actor_class_path
+    # Green arrows for this signal (lighting side filters to green); used to pick
+    # the 6-light arrow mesh on transplant maps and to drive the BP ActiveArrow* vars.
+    green_dirs = green_arrow_dirs(spec.arrows)
+    effective_transplant = select_vehicle_transplant(transplant, transplant_arrow, green_dirs)
+    use_transplant = effective_transplant is not None and "Pedestrian" not in spec.actor_class_path
     # Some maps keep pedestrians on the canonical parent-BP mesh (snap=False): e.g.
     # NishiShinjuku's native TrafficLightB meshes are ~10x scale, so snapping to them
     # would produce giant signals. Such pedestrians are placed at the OSM pose with the
@@ -492,7 +497,7 @@ def _spawn_or_update(spec: PlacementSpec,
         label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path, map_name)
         # When transplanting, the spec Z is unreliable (profile pole height) but the
         # mesh Z is adopted via snap, so the Z-validity gate is bypassed (XY only).
-        if use_transplant and transplant.get("ignore_snap_z_gate"):
+        if use_transplant and effective_transplant.get("ignore_snap_z_gate"):
             nearest, dist = _find_nearest_existing_signal_mesh(
                 location, snap_radius_cm, label_prefixes,
                 max_z_diff_cm=float("inf"), mesh_z_stats=None,
@@ -545,11 +550,13 @@ def _spawn_or_update(spec: PlacementSpec,
         if effective_snap:
             _zero_out_static_mesh_relative_rotation(existing)
             if use_transplant and snap_target_found:
-                _apply_vehicle_transplant(existing, rotation, transplant)
+                _apply_vehicle_transplant(existing, rotation, effective_transplant)
             elif snapped_mesh_asset is not None:
                 _override_static_mesh(existing, snapped_mesh_asset)
                 if "Pedestrian" in spec.actor_class_path:
                     _clear_static_mesh_material_overrides(existing)
+        if "Pedestrian" not in spec.actor_class_path:
+            _apply_active_arrows(existing, green_dirs)
         return existing, False, snap_info
 
     # Skip snap failures before new spawn
@@ -575,7 +582,7 @@ def _spawn_or_update(spec: PlacementSpec,
     if effective_snap:
         _zero_out_static_mesh_relative_rotation(actor)
         if use_transplant and snap_target_found:
-            _apply_vehicle_transplant(actor, rotation, transplant)
+            _apply_vehicle_transplant(actor, rotation, effective_transplant)
         elif snapped_mesh_asset is not None:
             _override_static_mesh(actor, snapped_mesh_asset)
             if "Pedestrian" in spec.actor_class_path:
@@ -594,6 +601,9 @@ def _spawn_or_update(spec: PlacementSpec,
     # Assign a human-readable label in the editor (subtype-specific prefix: TLV_/TLP_/TL_)
     prefix = _label_prefix_for_subtype(spec.subtype)
     actor.set_actor_label(f"{prefix}{spec.sign_id}")
+
+    if "Pedestrian" not in spec.actor_class_path:
+        _apply_active_arrows(actor, green_dirs)
 
     return actor, True, snap_info
 
@@ -649,6 +659,27 @@ def _clear_static_mesh_material_overrides(actor) -> None:
                     comp.set_material(i, sm.get_material(i) if sm is not None else None)
             except Exception:
                 pass
+
+
+def _apply_active_arrows(actor, green_dirs) -> None:
+    """Set the BP's ActiveArrow* instance vars from the green arrow directions.
+
+    Applies to all vehicle TLs (Odaiba native + transplant maps). The BP guards
+    each arrow slot with Get Material Index >= 0, so meshes without arrow slots
+    are simply skipped. Pedestrians are excluded by the caller.
+    """
+    left, straight, right = active_arrow_flags(green_dirs)
+    for prop, val in (("ActiveArrowLeft", left),
+                      ("ActiveArrowStraight", straight),
+                      ("ActiveArrowRight", right)):
+        try:
+            actor.set_editor_property(prop, val)
+        except Exception as e:
+            unreal.log_warning(f"_apply_active_arrows: set {prop} failed: {e}")
+    try:
+        actor.rerun_construction_scripts()
+    except Exception:
+        pass
 
 
 def _apply_vehicle_transplant(actor, snapped_rotation, transplant: dict) -> None:
@@ -1150,7 +1181,9 @@ def place_from_specs(
         used_mesh_labels: set = set()
 
         # Per-map vehicle transplant config (None for maps that adopt the native mesh).
-        transplant = get_map_profile(map_name).vehicle_transplant
+        profile = get_map_profile(map_name)
+        transplant = profile.vehicle_transplant
+        transplant_arrow = profile.vehicle_transplant_arrow
 
         for spec in placements:
             try:
@@ -1162,6 +1195,7 @@ def place_from_specs(
                     mesh_z_stats=mesh_z_stats,
                     map_name=map_name,
                     transplant=transplant,
+                    transplant_arrow=transplant_arrow,
                 )
                 if snap_info is not None:
                     used_mesh_labels.add(snap_info["label"])
