@@ -22,8 +22,9 @@ from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
 )
 from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
 from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
-    green_arrow_dirs, active_arrow_flags, select_vehicle_transplant,
+    green_arrow_dirs, select_vehicle_transplant,
 )
+from lanelet2_traffic_light.frontend_editor.arrow_lighting import apply_arrow_lighting
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -556,7 +557,7 @@ def _spawn_or_update(spec: PlacementSpec,
                 if "Pedestrian" in spec.actor_class_path:
                     _clear_static_mesh_material_overrides(existing)
         if "Pedestrian" not in spec.actor_class_path:
-            _apply_active_arrows(existing, green_dirs)
+            apply_arrow_lighting(existing, green_dirs)
         return existing, False, snap_info
 
     # Skip snap failures before new spawn
@@ -603,7 +604,7 @@ def _spawn_or_update(spec: PlacementSpec,
     actor.set_actor_label(f"{prefix}{spec.sign_id}")
 
     if "Pedestrian" not in spec.actor_class_path:
-        _apply_active_arrows(actor, green_dirs)
+        apply_arrow_lighting(actor, green_dirs)
 
     return actor, True, snap_info
 
@@ -659,27 +660,6 @@ def _clear_static_mesh_material_overrides(actor) -> None:
                     comp.set_material(i, sm.get_material(i) if sm is not None else None)
             except Exception:
                 pass
-
-
-def _apply_active_arrows(actor, green_dirs) -> None:
-    """Set the BP's ActiveArrow* instance vars from the green arrow directions.
-
-    Applies to all vehicle TLs (Odaiba native + transplant maps). The BP guards
-    each arrow slot with Get Material Index >= 0, so meshes without arrow slots
-    are simply skipped. Pedestrians are excluded by the caller.
-    """
-    left, straight, right = active_arrow_flags(green_dirs)
-    for prop, val in (("ActiveArrowLeft", left),
-                      ("ActiveArrowStraight", straight),
-                      ("ActiveArrowRight", right)):
-        try:
-            actor.set_editor_property(prop, val)
-        except Exception as e:
-            unreal.log_warning(f"_apply_active_arrows: set {prop} failed: {e}")
-    try:
-        actor.rerun_construction_scripts()
-    except Exception:
-        pass
 
 
 def _apply_vehicle_transplant(actor, snapped_rotation, transplant: dict) -> None:

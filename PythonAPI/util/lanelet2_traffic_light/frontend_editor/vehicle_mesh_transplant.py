@@ -42,11 +42,6 @@ def green_arrow_dirs(arrows):
     return frozenset(d for (c, d) in arrows if c == "green")
 
 
-def active_arrow_flags(green_dirs):
-    """Map a set of green directions to the BP's (left, straight, right) booleans."""
-    return ("left" in green_dirs, "straight" in green_dirs, "right" in green_dirs)
-
-
 def select_vehicle_transplant(transplant, transplant_arrow, green_dirs):
     """Pick the per-signal transplant config: the 6-light arrow mesh when the signal
     has green arrows and an arrow transplant is configured, otherwise the plain mesh.

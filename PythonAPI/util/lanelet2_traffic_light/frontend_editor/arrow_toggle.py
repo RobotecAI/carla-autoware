@@ -12,10 +12,14 @@ def is_vehicle_tl_label(label: str) -> bool:
 
 
 def set_arrows_enabled(enabled: bool) -> int:
-    """Set ArrowsEnabled on every vehicle TL actor and rerun their construction
-    scripts. Returns the number of actors updated. Editor-time only.
+    """Toggle green arrows on every vehicle TL actor by setting the Intensity scalar
+    on each applied M_JPArrowLit DMI (0 = off, default = on). Returns the number of
+    actors whose arrows were touched. Editor-time only.
     """
     import unreal
+    from lanelet2_traffic_light.frontend_editor.arrow_lighting import (
+        set_arrow_intensity_on_actor,
+    )
 
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     count = 0
@@ -23,9 +27,8 @@ def set_arrows_enabled(enabled: bool) -> int:
         if not is_vehicle_tl_label(actor.get_actor_label()):
             continue
         try:
-            actor.set_editor_property("ArrowsEnabled", bool(enabled))
-            actor.rerun_construction_scripts()
-            count += 1
+            if set_arrow_intensity_on_actor(actor, enabled) > 0:
+                count += 1
         except Exception as e:
             unreal.log_warning(f"set_arrows_enabled: {actor.get_actor_label()} failed: {e}")
     unreal.log(f"set_arrows_enabled({enabled}): updated {count} vehicle TL actors")

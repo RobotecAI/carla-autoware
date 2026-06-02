@@ -1,0 +1,116 @@
+"""Green-arrow lighting via material override.
+
+Inc 0 de-risk (2026-06-02) established that the map lamp materials carry no
+parameters (so an emissive scalar cannot be raised on them) and that
+``Actor.rerun_construction_scripts`` is unavailable in this build. Arrows are
+therefore lit by overriding each active green-arrow mesh slot with a dynamic
+instance of the T4 material ``M_JPArrowLit`` (arrow texture masked + black-level
+subtract -> green emissive). Map ``.uasset`` files are never edited; the override
+is applied to the placed BP actor's component.
+
+The pure part (direction maps + accessors) is unit-tested. The editor functions
+import ``unreal`` lazily so the module imports without the engine.
+"""
+
+# T4 emissive material applied to arrow slots (built by arrow_material_setup.py).
+ARROW_LIT_MATERIAL = (
+    "/T4/TrafficLightSample/VehicleTrafficLight/M_JPArrowLit.M_JPArrowLit"
+)
+
+# Direction -> mesh material slot name (Odaiba `_Modified` / SM_JPVehicleLampArrow).
+ARROW_SLOT_BY_DIR = {
+    "left": "Green_Left_Arrow",
+    "straight": "Green_Straight_Arrow",
+    "right": "Green_Right_Arrow",
+}
+
+# Direction -> T4 arrow texture (copies of the Odaiba per-direction arrow textures,
+# so the cook is self-contained for transplant maps).
+ARROW_TEX_BY_DIR = {
+    "left": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow_Left.T_JPArrow_Left",
+    "straight": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow_Straight.T_JPArrow_Straight",
+    "right": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow_Right.T_JPArrow_Right",
+}
+
+# Default ON value for the material's Intensity scalar (PIE-tuned; the material
+# asset carries the same default).
+ARROW_INTENSITY_ON = 30.0
+
+
+def arrow_slot_for_dir(direction):
+    """Mesh material slot name for a green-arrow direction, or None if unknown."""
+    return ARROW_SLOT_BY_DIR.get(direction)
+
+
+def arrow_texture_for_dir(direction):
+    """T4 arrow texture path for a green-arrow direction, or None if unknown."""
+    return ARROW_TEX_BY_DIR.get(direction)
+
+
+def _slot_names(component):
+    """Material slot names of the component's static mesh (editor-only)."""
+    sm = component.get_editor_property("static_mesh")
+    if sm is None:
+        return []
+    return [str(e.get_editor_property("material_slot_name"))
+            for e in sm.get_editor_property("static_materials")]
+
+
+def apply_arrow_lighting(actor, green_dirs):
+    """Override each active green-arrow slot with a DMI of M_JPArrowLit.
+
+    For every direction in ``green_dirs`` whose slot exists on the actor's static
+    mesh, create a dynamic instance of M_JPArrowLit, set its ``ArrowTex`` to the
+    per-direction T4 texture, and assign it to that slot. Slots absent on the mesh
+    are skipped (no green arrow there). Editor-only. Returns the number of slots lit.
+    """
+    import unreal
+
+    component = actor.get_component_by_class(unreal.StaticMeshComponent)
+    if component is None:
+        return 0
+    base_mat = unreal.load_asset(ARROW_LIT_MATERIAL)
+    if base_mat is None:
+        unreal.log_warning(f"apply_arrow_lighting: material not found {ARROW_LIT_MATERIAL}")
+        return 0
+    names = _slot_names(component)
+    lit = 0
+    for direction in green_dirs:
+        slot = ARROW_SLOT_BY_DIR.get(direction)
+        if slot is None or slot not in names:
+            continue
+        idx = names.index(slot)
+        mid = component.create_dynamic_material_instance(idx, base_mat)
+        if mid is None:
+            unreal.log_warning(f"apply_arrow_lighting: DMI creation failed at slot {slot}")
+            continue
+        tex_path = ARROW_TEX_BY_DIR.get(direction)
+        tex = unreal.load_asset(tex_path) if tex_path else None
+        if tex is not None:
+            mid.set_texture_parameter_value("ArrowTex", tex)
+        lit += 1
+    return lit
+
+
+def set_arrow_intensity_on_actor(actor, enabled):
+    """Toggle the arrows on one actor by setting Intensity on every applied
+    M_JPArrowLit DMI (0 = off, ARROW_INTENSITY_ON = on). Editor-only.
+    Returns the number of arrow DMIs touched.
+    """
+    import unreal
+
+    component = actor.get_component_by_class(unreal.StaticMeshComponent)
+    if component is None:
+        return 0
+    value = ARROW_INTENSITY_ON if enabled else 0.0
+    touched = 0
+    for idx in range(component.get_num_materials()):
+        mat = component.get_material(idx)
+        if not isinstance(mat, unreal.MaterialInstanceDynamic):
+            continue
+        base = mat.get_base_material()
+        if base is None or base.get_name() != "M_JPArrowLit":
+            continue
+        mat.set_scalar_parameter_value("Intensity", value)
+        touched += 1
+    return touched

@@ -40,7 +40,6 @@ def test_unknown_map_has_no_transplant():
 
 from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
     green_arrow_dirs,
-    active_arrow_flags,
     select_vehicle_transplant,
 )
 
@@ -52,12 +51,6 @@ def test_green_arrow_dirs_filters_green_only():
 
 def test_green_arrow_dirs_empty():
     assert green_arrow_dirs(()) == frozenset()
-
-
-def test_active_arrow_flags_order_left_straight_right():
-    assert active_arrow_flags(frozenset({"right", "left"})) == (True, False, True)
-    assert active_arrow_flags(frozenset({"straight"})) == (False, True, False)
-    assert active_arrow_flags(frozenset()) == (False, False, False)
 
 
 def test_select_vehicle_transplant_picks_arrow_when_green_dirs():
