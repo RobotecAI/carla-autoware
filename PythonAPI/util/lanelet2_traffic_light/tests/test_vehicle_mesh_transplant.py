@@ -36,3 +36,42 @@ def test_odaiba_has_no_transplant():
 def test_unknown_map_has_no_transplant():
     assert transplant_mesh_for_map("Unknown") is None
     assert transplant_mesh_for_map(None) is None
+
+
+from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
+    green_arrow_dirs,
+    active_arrow_flags,
+    select_vehicle_transplant,
+)
+
+
+def test_green_arrow_dirs_filters_green_only():
+    arrows = (("green", "right"), ("green", "straight"), ("yellow", "left"))
+    assert green_arrow_dirs(arrows) == frozenset({"right", "straight"})
+
+
+def test_green_arrow_dirs_empty():
+    assert green_arrow_dirs(()) == frozenset()
+
+
+def test_active_arrow_flags_order_left_straight_right():
+    assert active_arrow_flags(frozenset({"right", "left"})) == (True, False, True)
+    assert active_arrow_flags(frozenset({"straight"})) == (False, True, False)
+    assert active_arrow_flags(frozenset()) == (False, False, False)
+
+
+def test_select_vehicle_transplant_picks_arrow_when_green_dirs():
+    plain = {"mesh": "plain"}
+    arrow = {"mesh": "arrow"}
+    assert select_vehicle_transplant(plain, arrow, frozenset({"right"})) is arrow
+
+
+def test_select_vehicle_transplant_plain_when_no_green_dirs():
+    plain = {"mesh": "plain"}
+    arrow = {"mesh": "arrow"}
+    assert select_vehicle_transplant(plain, arrow, frozenset()) is plain
+
+
+def test_select_vehicle_transplant_plain_when_arrow_none():
+    plain = {"mesh": "plain"}
+    assert select_vehicle_transplant(plain, None, frozenset({"right"})) is plain

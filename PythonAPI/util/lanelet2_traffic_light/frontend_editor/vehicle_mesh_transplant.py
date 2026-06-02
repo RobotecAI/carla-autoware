@@ -30,3 +30,27 @@ def vehicle_mesh_prefixes_for_map(map_name):
 def transplant_mesh_for_map(map_name):
     """Vehicle transplant config dict for the map, or None to keep the native mesh."""
     return get_map_profile(map_name).vehicle_transplant
+
+
+def green_arrow_dirs(arrows):
+    """Directions of the GREEN arrows from a PlacementSpec.arrows ((color,direction),...).
+
+    The lighting side only handles green arrows (the only color present in the
+    target maps and the only color the meshes have slots for). Returns a frozenset
+    of "left"/"straight"/"right".
+    """
+    return frozenset(d for (c, d) in arrows if c == "green")
+
+
+def active_arrow_flags(green_dirs):
+    """Map a set of green directions to the BP's (left, straight, right) booleans."""
+    return ("left" in green_dirs, "straight" in green_dirs, "right" in green_dirs)
+
+
+def select_vehicle_transplant(transplant, transplant_arrow, green_dirs):
+    """Pick the per-signal transplant config: the 6-light arrow mesh when the signal
+    has green arrows and an arrow transplant is configured, otherwise the plain mesh.
+    """
+    if green_dirs and transplant_arrow is not None:
+        return transplant_arrow
+    return transplant
