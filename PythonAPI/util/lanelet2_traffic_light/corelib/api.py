@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm, parse_arrow_bulbs
 from lanelet2_traffic_light.corelib.geometry.mgrs_transform import MgrsTransformer
 from lanelet2_traffic_light.corelib.geometry.pose_estimator import estimate_center_and_yaw
 from lanelet2_traffic_light.corelib.profile.profile_base import TrafficLightProfile
@@ -76,6 +76,8 @@ def generate_placements(
     report.parsed_traffic_lights = len(tls)
     report.parsed_groups = len(groups)
 
+    arrow_bulbs = parse_arrow_bulbs(osm_path)  # {tl_way_id: frozenset[(color, direction)]}
+
     # Reverse lookup: way_id -> GroupSpec (for SignID strategies that need to reference the group)
     wayid_to_group: dict[int, GroupSpec] = {}
     for g in groups:
@@ -139,6 +141,7 @@ def generate_placements(
             local_x=local_x_mid,
             local_y=local_y_mid,
             mgrs_code=mgrs_code,
+            arrows=tuple(sorted(arrow_bulbs.get(tl.way_id, frozenset()))),
         ))
         report.placements_created += 1
 

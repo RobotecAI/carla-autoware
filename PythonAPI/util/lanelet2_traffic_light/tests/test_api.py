@@ -220,3 +220,20 @@ def test_real_odaiba_osm_parses_and_generates():
         x, y, z = p.location_cm
         assert -1e8 < x < 1e8
         assert -1e8 < y < 1e8
+
+
+def test_generate_placements_populates_arrows():
+    """Task 1.4: arrows are populated from parse_arrow_bulbs into PlacementSpec.arrows."""
+    fixture = os.path.join(os.path.dirname(__file__), "fixtures", "arrows.osm")
+    transformer = MgrsTransformer(0.0, 0.0, 0.0, x_sign=+1, y_sign=-1)
+    placements, groups, report = generate_placements(
+        osm_path=fixture,
+        profile=PROFILE_JP,
+        sign_id_resolver=WayIdResolver(),
+        transformer=transformer,
+    )
+    by_id = {p.source_way_id: p for p in placements}
+    # way 1001 has two arrow bulbs: green-right, green-up (normalized to straight)
+    assert set(by_id[1001].arrows) == {("green", "right"), ("green", "straight")}
+    # way 1002 has no arrow bulbs
+    assert by_id[1002].arrows == ()
