@@ -66,6 +66,12 @@ class MapProfile:
     # (e.g. Odaiba pedestrian -> SceneFigure).
     parent_bp_override: dict = field(default_factory=dict)
 
+    # Whether pedestrians snap to an existing native mesh. False keeps the canonical
+    # parent-BP mesh (snap=False): NishiShinjuku's native TrafficLightB meshes are
+    # ~10x scale, so snapping to them would produce giant signals; the canonical
+    # TrafficLightPedestrian mesh is the correct real-world size.
+    pedestrian_uses_snap: bool = True
+
 
 _DEFAULT = MapProfile()
 
@@ -78,7 +84,10 @@ MAP_PROFILES = {
         vehicle_mesh_prefixes=("TrafficLightsA",),
         pedestrian_mesh_prefixes=("TrafficLightB",),
         vehicle_transplant=_NISHISHINJUKU_VEHICLE_TRANSPLANT,
-        # Pedestrians are canonical (snap=False, mesh->osm feedback): no parent override.
+        # Pedestrians are canonical (snap=False): the native TrafficLightB meshes are
+        # ~10x scale, so they keep the correctly-sized canonical parent-BP mesh and are
+        # placed at the mesh-derived OSM pose. No parent override (canonical BP).
+        pedestrian_uses_snap=False,
     ),
 }
 

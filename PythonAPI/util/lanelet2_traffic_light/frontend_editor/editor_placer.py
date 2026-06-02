@@ -480,7 +480,15 @@ def _spawn_or_update(spec: PlacementSpec,
     # (maps whose native vehicle meshes lack per-color slots, e.g. NishiShinjuku).
     # Pedestrians never transplant.
     use_transplant = transplant is not None and "Pedestrian" not in spec.actor_class_path
-    if snap_to_existing_mesh:
+    # Some maps keep pedestrians on the canonical parent-BP mesh (snap=False): e.g.
+    # NishiShinjuku's native TrafficLightB meshes are ~10x scale, so snapping to them
+    # would produce giant signals. Such pedestrians are placed at the OSM pose with the
+    # correctly-sized canonical mesh (the rest of the snap logic is skipped for them).
+    effective_snap = snap_to_existing_mesh
+    if ("Pedestrian" in spec.actor_class_path
+            and not get_map_profile(map_name).pedestrian_uses_snap):
+        effective_snap = False
+    if effective_snap:
         label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path, map_name)
         # When transplanting, the spec Z is unreliable (profile pole height) but the
         # mesh Z is adopted via snap, so the Z-validity gate is bypassed (XY only).
@@ -534,7 +542,7 @@ def _spawn_or_update(spec: PlacementSpec,
         # Update only position and rotation of existing actor (label and sign_id are preserved)
         existing.set_actor_location(location, sweep=False, teleport=True)
         existing.set_actor_rotation(rotation, teleport_physics=True)
-        if snap_to_existing_mesh:
+        if effective_snap:
             _zero_out_static_mesh_relative_rotation(existing)
             if use_transplant and snap_target_found:
                 _apply_vehicle_transplant(existing, rotation, transplant)
@@ -546,7 +554,7 @@ def _spawn_or_update(spec: PlacementSpec,
 
     # Skip snap failures before new spawn
     # (existing actor updates never reach this point, so they are unaffected)
-    if snap_to_existing_mesh and skip_when_snap_fails and not snap_target_found:
+    if effective_snap and skip_when_snap_fails and not snap_target_found:
         return None, False, None
 
     # New spawn
@@ -564,7 +572,7 @@ def _spawn_or_update(spec: PlacementSpec,
     # Rotation, so it is zeroed out here.  Additionally, each Traffic_Lights_* uses
     # an individual Scene_NNNN asset, so the mesh is also replaced with the snap
     # target's mesh to align pivot positions.
-    if snap_to_existing_mesh:
+    if effective_snap:
         _zero_out_static_mesh_relative_rotation(actor)
         if use_transplant and snap_target_found:
             _apply_vehicle_transplant(actor, rotation, transplant)

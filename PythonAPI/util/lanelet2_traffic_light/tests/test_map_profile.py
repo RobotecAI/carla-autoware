@@ -10,6 +10,7 @@ def test_unknown_map_returns_generic_default():
     assert prof.pedestrian_mesh_prefixes == ("Pedestrian_Lights",)
     assert prof.vehicle_transplant is None
     assert prof.parent_bp_override == {}
+    assert prof.pedestrian_uses_snap is True
 
 
 def test_none_map_returns_default():
@@ -22,6 +23,7 @@ def test_odaiba_profile():
     assert prof.pedestrian_mesh_prefixes == ("Pedestrian_Lights",)
     assert prof.vehicle_transplant is None  # adopts the native Scene_NNN mesh
     assert prof.parent_bp_override == {"red_green": SCENE_FIGURE_PARENT_BP}
+    assert prof.pedestrian_uses_snap is True  # Odaiba peds snap (SceneFigure)
 
 
 def test_nishishinjuku_profile():
@@ -35,6 +37,7 @@ def test_nishishinjuku_profile():
     assert t["world_z_offset_cm"] == -24.0
     assert t["ignore_snap_z_gate"] is True
     assert prof.parent_bp_override == {}  # pedestrians are canonical (snap=False)
+    assert prof.pedestrian_uses_snap is False  # native TrafficLightB is ~10x; keep canonical
 
 
 def test_adding_a_new_map_is_one_entry():
