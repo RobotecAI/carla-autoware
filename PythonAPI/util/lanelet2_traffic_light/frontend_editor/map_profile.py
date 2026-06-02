@@ -28,6 +28,12 @@ TRANSPLANT_VEHICLE_MESH = (
     "/T4/TrafficLightSample/VehicleTrafficLight/SM_JPVehicleLamp.SM_JPVehicleLamp"
 )
 
+# 6-light variant (R/Y/G + 3 green arrow slots) for arrow-bearing vehicle signals
+# on transplant maps. A copy of an Odaiba `_Modified` Scene mesh (Inc 0 de-risk).
+TRANSPLANT_VEHICLE_MESH_ARROW = (
+    "/T4/TrafficLightSample/VehicleTrafficLight/SM_JPVehicleLampArrow.SM_JPVehicleLampArrow"
+)
+
 # NishiShinjuku vehicle transplant settings (values confirmed in the Inc1 de-risk).
 #   mesh:               replacement mesh asset path.
 #   scale:              component relative scale (snap does not adopt native scale).
@@ -40,6 +46,18 @@ TRANSPLANT_VEHICLE_MESH = (
 #                       and snap adopts the mesh Z anyway).
 _NISHISHINJUKU_VEHICLE_TRANSPLANT = {
     "mesh": TRANSPLANT_VEHICLE_MESH,
+    "scale": 1.0,
+    "relrot_deg": (0.0, 120.0, -90.0),
+    "world_z_offset_cm": -24.0,
+    "local_offset_cm": (0.0, 0.0, 0.0),
+    "ignore_snap_z_gate": True,
+}
+
+# Arrow (6-light) transplant pose for NishiShinjuku. The 6-light geometry differs
+# from the 3-light SM_JPVehicleLamp, so the pose is a separate set (values are the
+# 3-light starting point; confirmed/updated in the Inc 0 de-risk).
+_NISHISHINJUKU_VEHICLE_TRANSPLANT_ARROW = {
+    "mesh": TRANSPLANT_VEHICLE_MESH_ARROW,
     "scale": 1.0,
     "relrot_deg": (0.0, 120.0, -90.0),
     "world_z_offset_cm": -24.0,
@@ -61,6 +79,10 @@ class MapProfile:
     # For maps whose native meshes lack per-color slots: snap for pose but swap the
     # mesh to a T4 mesh (settings dict). None keeps the native Scene_NNN (e.g. Odaiba).
     vehicle_transplant: Optional[dict] = None
+
+    # For transplant maps: the 6-light arrow mesh config used for signals that have
+    # green arrows (per-signal selection). None keeps the plain transplant / native.
+    vehicle_transplant_arrow: Optional[dict] = None
 
     # subtype -> parent BP path override for derived-BP generation
     # (e.g. Odaiba pedestrian -> SceneFigure).
@@ -84,6 +106,7 @@ MAP_PROFILES = {
         vehicle_mesh_prefixes=("TrafficLightsA",),
         pedestrian_mesh_prefixes=("TrafficLightB",),
         vehicle_transplant=_NISHISHINJUKU_VEHICLE_TRANSPLANT,
+        vehicle_transplant_arrow=_NISHISHINJUKU_VEHICLE_TRANSPLANT_ARROW,
         # Pedestrians are canonical (snap=False): the native TrafficLightB meshes are
         # ~10x scale, so they keep the correctly-sized canonical parent-BP mesh and are
         # placed at the mesh-derived OSM pose. No parent override (canonical BP).

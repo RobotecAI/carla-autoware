@@ -47,3 +47,24 @@ def test_adding_a_new_map_is_one_entry():
     assert prof.pedestrian_mesh_prefixes == ("Pedestrian_Lights",)  # default
     assert prof.vehicle_transplant is None  # default
     assert prof.parent_bp_override == {}  # default
+
+
+def test_nishishinjuku_has_arrow_transplant():
+    from lanelet2_traffic_light.frontend_editor.map_profile import (
+        get_map_profile, TRANSPLANT_VEHICLE_MESH_ARROW,
+    )
+    t = get_map_profile("NishishinjukuMap").vehicle_transplant_arrow
+    assert t is not None
+    assert t["mesh"] == TRANSPLANT_VEHICLE_MESH_ARROW
+    assert t["ignore_snap_z_gate"] is True
+
+
+def test_odaiba_has_no_arrow_transplant():
+    from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+    assert get_map_profile("Odaiba").vehicle_transplant_arrow is None
+
+
+def test_default_has_no_arrow_transplant():
+    from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+    assert get_map_profile("Unknown").vehicle_transplant_arrow is None
+    assert get_map_profile(None).vehicle_transplant_arrow is None
