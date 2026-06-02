@@ -106,3 +106,34 @@ def test_node_ele_missing_returns_none():
             if node.ele is None:
                 found_none = True
     assert found_none, "The fixture must contain a node without an ele tag"
+
+
+from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_arrow_bulbs
+
+
+@pytest.fixture
+def arrows_osm_path():
+    import os
+    return os.path.join(os.path.dirname(__file__), "fixtures", "arrows.osm")
+
+
+def test_parse_arrow_bulbs_extracts_color_and_direction(arrows_osm_path):
+    bulbs = parse_arrow_bulbs(arrows_osm_path)
+    # 1001 has green-right, green-up(->straight); red bulb has no arrow (excluded)
+    assert bulbs[1001] == frozenset({("green", "right"), ("green", "straight")})
+
+
+def test_parse_arrow_bulbs_no_arrow_tl_absent_or_empty(arrows_osm_path):
+    bulbs = parse_arrow_bulbs(arrows_osm_path)
+    # 1002 light_bulbs way has no arrow bulbs -> empty set (or key absent)
+    assert bulbs.get(1002, frozenset()) == frozenset()
+
+
+def test_parse_arrow_bulbs_warns_on_unknown_direction(arrows_osm_path):
+    with pytest.warns(UserWarning, match="unknown arrow direction"):
+        parse_arrow_bulbs(arrows_osm_path)
+
+
+def test_parse_arrow_bulbs_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        parse_arrow_bulbs("/nonexistent/x.osm")

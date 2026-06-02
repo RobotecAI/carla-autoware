@@ -112,3 +112,58 @@ def parse_osm(osm_path: str) -> tuple[list[TrafficLightSpec], list[GroupSpec]]:
         ))
 
     return traffic_lights, groups
+
+
+_ARROW_DIRECTION_MAP = {"left": "left", "right": "right", "up": "straight"}
+
+
+def parse_arrow_bulbs(osm_path: str) -> dict[int, frozenset[tuple[str, str]]]:
+    """Parse light_bulbs ways into per-traffic_light arrow bulbs.
+
+    A `light_bulbs` way carries a `traffic_light_id` tag (the traffic_light way it
+    belongs to) and references bulb nodes via `nd`. Each bulb node may carry a
+    `color` (red/yellow/green) and an `arrow` (left/right/up) tag. Only bulbs with
+    an `arrow` tag are returned. Color is preserved (not filtered) so a future
+    non-green arrow needs no parser change; the lighting side filters to green.
+    `arrow=up` normalizes to "straight"; unknown directions are warned and skipped
+    (no mesh slot exists for them).
+
+    Returns: {traffic_light_way_id: frozenset[(color, direction)]}.
+    """
+    if not os.path.exists(osm_path):
+        raise FileNotFoundError(osm_path)
+    tree = ET.parse(osm_path)
+    root = tree.getroot()
+
+    node_tags: dict[int, dict[str, str]] = {}
+    for n in root.findall("node"):
+        node_tags[int(n.get("id"))] = {t.get("k"): t.get("v") for t in n.findall("tag")}
+
+    result: dict[int, set[tuple[str, str]]] = {}
+    for way in root.findall("way"):
+        tags = {t.get("k"): t.get("v") for t in way.findall("tag")}
+        if tags.get("type") != "light_bulbs":
+            continue
+        tl_id_raw = tags.get("traffic_light_id")
+        if tl_id_raw is None:
+            warnings.warn(
+                f"skip light_bulbs way={way.get('id')}: no traffic_light_id tag",
+                stacklevel=2,
+            )
+            continue
+        tl_id = int(tl_id_raw)
+        bucket = result.setdefault(tl_id, set())
+        for nd in way.findall("nd"):
+            ntags = node_tags.get(int(nd.get("ref")), {})
+            raw_arrow = ntags.get("arrow")
+            if raw_arrow is None:
+                continue
+            direction = _ARROW_DIRECTION_MAP.get(raw_arrow)
+            if direction is None:
+                warnings.warn(
+                    f"skip unknown arrow direction '{raw_arrow}' in light_bulbs way={way.get('id')}",
+                    stacklevel=2,
+                )
+                continue
+            bucket.add((ntags.get("color", ""), direction))
+    return {k: frozenset(v) for k, v in result.items()}
