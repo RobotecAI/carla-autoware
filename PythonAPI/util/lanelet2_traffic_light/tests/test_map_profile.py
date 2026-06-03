@@ -89,3 +89,18 @@ def test_odaiba_and_default_have_no_native_led_slot():
     assert get_map_profile("Odaiba").vehicle_native_led_slot is None
     assert get_map_profile("Unknown").vehicle_native_led_slot is None
     assert get_map_profile(None).vehicle_native_led_slot is None
+
+
+def test_nishishinjuku_vehicle_snap_ignores_z_gate():
+    # The spec Z for NishiShinjuku vehicles is a uniform bogus value (target_z=-3074
+    # in the 2026-06-03 full run), so the snap Z-validity gate must be bypassed for
+    # ALL vehicle snaps (native AND transplant) on this map. Previously the bypass
+    # lived only in the transplant config, so the native-arrow pivot silently lost
+    # it and every arrow signal was snap_skipped.
+    assert get_map_profile("NishishinjukuMap").vehicle_snap_ignore_z_gate is True
+
+
+def test_odaiba_and_default_keep_z_gate():
+    assert get_map_profile("Odaiba").vehicle_snap_ignore_z_gate is False
+    assert get_map_profile("Unknown").vehicle_snap_ignore_z_gate is False
+    assert get_map_profile(None).vehicle_snap_ignore_z_gate is False

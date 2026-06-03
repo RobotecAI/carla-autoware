@@ -509,9 +509,17 @@ def _spawn_or_update(spec: PlacementSpec,
         effective_snap = False
     if effective_snap:
         label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path, map_name)
-        # When transplanting, the spec Z is unreliable (profile pole height) but the
-        # mesh Z is adopted via snap, so the Z-validity gate is bypassed (XY only).
-        if use_transplant and effective_transplant.get("ignore_snap_z_gate"):
+        # On maps whose vehicle spec Z is unreliable, the mesh Z is adopted via snap
+        # anyway, so the Z-validity gate is bypassed (XY only) for EVERY vehicle snap
+        # — native and transplant alike (profile.vehicle_snap_ignore_z_gate). The
+        # per-transplant flag is kept for backward compatibility.
+        ignore_z_gate = (
+            (profile.vehicle_snap_ignore_z_gate
+             and "Pedestrian" not in spec.actor_class_path)
+            or (use_transplant
+                and bool(effective_transplant.get("ignore_snap_z_gate")))
+        )
+        if ignore_z_gate:
             nearest, dist = _find_nearest_existing_signal_mesh(
                 location, snap_radius_cm, label_prefixes,
                 max_z_diff_cm=float("inf"), mesh_z_stats=None,
@@ -1159,12 +1167,19 @@ def place_from_specs(
     with unreal.ScopedEditorTransaction("Generate Traffic Lights from lanelet2"):
         sign_id_to_actor: dict = {}
 
+        # Per-map vehicle transplant config (None for maps that adopt the native mesh).
+        map_profile = get_map_profile(map_name)
+
         # Phase 4.2: collect Z statistics for snap target meshes once.
         # Passed to _find_nearest_existing_signal_mesh for per-prefix Tukey range
-        # Z validity checks (map-independent). Falls back to static threshold if empty.
+        # Z validity checks. Collected for the MAP's own label prefixes (the Odaiba
+        # defaults match no actor on other maps, which silently disabled the adaptive
+        # gate there). Falls back to the static threshold if empty.
         mesh_z_stats = None
         if snap_to_existing_mesh:
-            mesh_z_stats = _collect_mesh_z_stats()
+            mesh_z_stats = _collect_mesh_z_stats(
+                tuple(map_profile.vehicle_mesh_prefixes)
+                + tuple(map_profile.pedestrian_mesh_prefixes))
             for prefix, st in mesh_z_stats.items():
                 unreal.log(
                     f"place_from_specs[Z stats]: {prefix} n={st.n} "
@@ -1201,10 +1216,8 @@ def place_from_specs(
         # Set of existing mesh labels adopted in snap mode (for reverse-mismatch detection)
         used_mesh_labels: set = set()
 
-        # Per-map vehicle transplant config (None for maps that adopt the native mesh).
-        profile = get_map_profile(map_name)
-        transplant = profile.vehicle_transplant
-        transplant_arrow = profile.vehicle_transplant_arrow
+        transplant = map_profile.vehicle_transplant
+        transplant_arrow = map_profile.vehicle_transplant_arrow
 
         for spec in placements:
             try:

@@ -118,6 +118,14 @@ class MapProfile:
     # falls back to the arrow_lighting module defaults (Odaiba slots + T4 textures).
     vehicle_arrow_native: Optional[dict] = None
 
+    # Bypass the snap Z-validity gate for ALL vehicle snaps (native and transplant).
+    # A MAP property, not a transplant property: on maps whose vehicle spec Z is
+    # unreliable (NishiShinjuku source data yields a uniform bogus Z), gating by
+    # |mesh_z - spec_z| rejects every candidate; snap adopts the mesh Z anyway, so
+    # the gate is XY-only there. (The per-transplant ignore_snap_z_gate flag is
+    # still honored for backward compatibility.)
+    vehicle_snap_ignore_z_gate: bool = False
+
     # Native LED (R/Y/G) slot name for hybrid per-signal native lighting. When set, a
     # vehicle signal whose SNAPPED mesh carries this slot skips the transplant: it keeps
     # the native mesh (pose AND world scale) and the vehicle BP drives M_JPVehicleLedRYG
@@ -148,6 +156,10 @@ MAP_PROFILES = {
         vehicle_mesh_prefixes=("TrafficLightsA",),
         pedestrian_mesh_prefixes=("TrafficLightB",),
         vehicle_transplant=_NISHISHINJUKU_VEHICLE_TRANSPLANT,
+        # Vehicle spec Z is a uniform bogus value on this map -> XY-only snap gate
+        # for every vehicle signal (native arrows/LEDs would otherwise all be
+        # rejected by the |mesh_z - spec_z| fallback gate; 2026-06-03 full run).
+        vehicle_snap_ignore_z_gate=True,
         # Arrow signals are NATIVE (no transplant): per-direction arrow slots exist on the
         # native units, so they keep their own mesh and light those slots (2026-06-03).
         vehicle_arrow_native=_NISHISHINJUKU_VEHICLE_ARROW_NATIVE,
