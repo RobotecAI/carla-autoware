@@ -3,13 +3,15 @@
 Editor-only (depends on `unreal`). The .uasset lives in tracked T4 plugin content;
 this script reproduces it so it can be rebuilt.
 
-Graph: BaseColor = black; Emissive = Clamp((ArrowTex.RGB - BlackLevel)/(WhiteLevel -
-       BlackLevel), 0, 1) * TintColor * Intensity. The black/white-level remap sends the
-       dim (non-arrow) background to true black while rescaling the dim arrow LED dots up
-       to full range, so only the dots emit (the arrow texture's dots and background are
-       both low-valued; a plain subtract crushes the dots too — Inc 0 de-risk). Params:
-       ArrowTex (Texture2D, set per-direction at runtime), TintColor (vector, white),
-       Intensity (scalar), BlackLevel (scalar), WhiteLevel (scalar).
+Graph: BaseColor = black; Emissive = Clamp((ArrowTex.G - BlackLevel)/(WhiteLevel -
+       BlackLevel), 0, 1) * TintColor * Intensity.
+       Inc 0 de-risk (2026-06-02) found the arrow texture encodes everything in the GREEN
+       channel at very low linear values: black band (G~0) < green lens (G<0.005) < LED
+       dots (G~0.005-0.015). R/B are ~0 and alpha is opaque. Masking on Tex.RGB lit the
+       green lens; masking on the G channel with BlackLevel just above the lens level
+       isolates the dots, and TintColor (green) colors them. Validated: clean green LED
+       arrow on a black lens. Params: ArrowTex (Texture2D, set per-direction at runtime),
+       TintColor (vector, green), Intensity (scalar), BlackLevel (scalar), WhiteLevel (scalar).
 
 Run from the editor Output Log (after the T_JPArrow_* textures exist in T4):
     py "<repo>/PythonAPI/util/lanelet2_traffic_light/frontend_editor/arrow_material_setup.py"
@@ -23,11 +25,11 @@ MATERIAL_PATH = "%s/%s" % (MATERIAL_DIR, MATERIAL_NAME)
 # set at runtime via the ArrowTex parameter (apply_arrow_lighting). T4 = self-contained.
 DEFAULT_ARROW_TEX = "%s/T_JPArrow_Right" % MATERIAL_DIR
 
-# De-risk defaults; final values tuned in PIE (bloom on). The arrow LED dots are dim
-# in the source texture, so WhiteLevel sits just above the dot value to rescale them up.
-DEFAULT_INTENSITY = 10.0
-DEFAULT_BLACK_LEVEL = 0.04
-DEFAULT_WHITE_LEVEL = 0.12
+# De-risk defaults (validated 2026-06-02: clean green dot arrow on black lens via the G
+# channel). BlackLevel sits just above the green-lens G level; final tune in PIE (bloom on).
+DEFAULT_INTENSITY = 12.0
+DEFAULT_BLACK_LEVEL = 0.005
+DEFAULT_WHITE_LEVEL = 0.025
 
 mel = unreal.MaterialEditingLibrary
 MP_BASE = unreal.MaterialProperty.MP_BASE_COLOR
@@ -71,7 +73,8 @@ def build():
 
     tint = _expr(mat, unreal.MaterialExpressionVectorParameter, -600, 200)
     tint.set_editor_property("parameter_name", "TintColor")
-    tint.set_editor_property("default_value", unreal.LinearColor(1.0, 1.0, 1.0, 1.0))
+    # Green: the G-channel mask is a grayscale arrow; TintColor colors it (green arrows).
+    tint.set_editor_property("default_value", unreal.LinearColor(0.0, 1.0, 0.0, 1.0))
 
     inten = _expr(mat, unreal.MaterialExpressionScalarParameter, -600, 350)
     inten.set_editor_property("parameter_name", "Intensity")
@@ -84,13 +87,13 @@ def build():
     wht.set_editor_property("parameter_name", "WhiteLevel")
     wht.set_editor_property("default_value", DEFAULT_WHITE_LEVEL)
 
-    # Levels remap: Clamp((ArrowTex.RGB - BlackLevel)/(WhiteLevel - BlackLevel), 0, 1).
-    # Background (< BlackLevel) -> 0; dim arrow dots (~WhiteLevel) -> ~1 (rescaled up).
+    # Levels remap on the GREEN channel: Clamp((ArrowTex.G - BlackLevel)/(WhiteLevel -
+    # BlackLevel), 0, 1). Green lens (G < BlackLevel) -> 0; LED dots (G ~ WhiteLevel) -> ~1.
     rng = _expr(mat, unreal.MaterialExpressionSubtract, -450, 500)  # WhiteLevel - BlackLevel
     _con(wht, "", rng, "A")
     _con(blk, "", rng, "B")
-    num = _expr(mat, unreal.MaterialExpressionSubtract, -450, 0)    # Tex - BlackLevel
-    _con(tp, "RGB", num, "A")
+    num = _expr(mat, unreal.MaterialExpressionSubtract, -450, 0)    # Tex.G - BlackLevel
+    _con(tp, "G", num, "A")
     _con(blk, "", num, "B")
     div = _expr(mat, unreal.MaterialExpressionDivide, -350, 0)
     _con(num, "", div, "A")
