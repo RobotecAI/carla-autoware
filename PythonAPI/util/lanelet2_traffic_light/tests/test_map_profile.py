@@ -75,3 +75,17 @@ def test_odaiba_and_default_have_no_arrow_native():
     assert get_map_profile("Odaiba").vehicle_transplant_arrow is None
     assert get_map_profile("Unknown").vehicle_arrow_native is None
     assert get_map_profile(None).vehicle_arrow_native is None
+
+
+def test_nishishinjuku_native_led_slot():
+    # Hybrid native LED (level scan 2026-06-03): all 51 non-arrow native heads carry
+    # the TrafficLightsLed slot with the same lamp-row geometry as the 21 arrow units,
+    # so 3-light signals also go native WHEN the snapped mesh has this slot. The 14
+    # odd 1x-scale heads (slot TrafficLightsA01_Led01_Share01_col) keep the transplant.
+    assert get_map_profile("NishishinjukuMap").vehicle_native_led_slot == "TrafficLightsLed"
+
+
+def test_odaiba_and_default_have_no_native_led_slot():
+    assert get_map_profile("Odaiba").vehicle_native_led_slot is None
+    assert get_map_profile("Unknown").vehicle_native_led_slot is None
+    assert get_map_profile(None).vehicle_native_led_slot is None

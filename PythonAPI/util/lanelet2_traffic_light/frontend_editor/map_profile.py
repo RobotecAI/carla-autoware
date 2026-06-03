@@ -118,6 +118,14 @@ class MapProfile:
     # falls back to the arrow_lighting module defaults (Odaiba slots + T4 textures).
     vehicle_arrow_native: Optional[dict] = None
 
+    # Native LED (R/Y/G) slot name for hybrid per-signal native lighting. When set, a
+    # vehicle signal whose SNAPPED mesh carries this slot skips the transplant: it keeps
+    # the native mesh (pose AND world scale) and the vehicle BP drives M_JPVehicleLedRYG
+    # on this slot per set_state (self-gating, same gate as the BP's Get Material Index).
+    # Signals snapping to meshes WITHOUT the slot fall back to the transplant. None
+    # disables (vehicle_transplant decides as before).
+    vehicle_native_led_slot: Optional[str] = None
+
     # subtype -> parent BP path override for derived-BP generation
     # (e.g. Odaiba pedestrian -> SceneFigure).
     parent_bp_override: dict = field(default_factory=dict)
@@ -143,6 +151,11 @@ MAP_PROFILES = {
         # Arrow signals are NATIVE (no transplant): per-direction arrow slots exist on the
         # native units, so they keep their own mesh and light those slots (2026-06-03).
         vehicle_arrow_native=_NISHISHINJUKU_VEHICLE_ARROW_NATIVE,
+        # 3-light signals are ALSO native when possible (level scan 2026-06-03: all 51
+        # non-arrow head variants carry TrafficLightsLed with the same lamp-row geometry
+        # as the arrow units). The 14 odd 1x-scale heads (slot ..._Led01_Share01_col)
+        # lack the slot and keep the transplant (per-signal fallback after snap).
+        vehicle_native_led_slot="TrafficLightsLed",
         # Pedestrians are canonical (snap=False): the native TrafficLightB meshes are
         # ~10x scale, so they keep the correctly-sized canonical parent-BP mesh and are
         # placed at the mesh-derived OSM pose. No parent override (canonical BP).

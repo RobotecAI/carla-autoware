@@ -78,3 +78,24 @@ def test_select_vehicle_transplant_native_arrow_returns_none():
     assert select_vehicle_transplant(plain, arrow, frozenset({"right"}), arrow_native=True) is None
     # signals without green arrows are unaffected by the flag
     assert select_vehicle_transplant(plain, arrow, frozenset(), arrow_native=True) is plain
+
+
+from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
+    native_led_capable,
+)
+
+
+def test_native_led_capable_when_slot_present():
+    slots = ["TrafficLightsLed", "TrafficLightsA01_Head01_White01_MT1"]
+    assert native_led_capable(slots, "TrafficLightsLed") is True
+
+
+def test_native_led_capable_false_for_odd_head_family():
+    # NishiShinjuku's 14 odd 1x-scale heads use a different slot naming and geometry:
+    # they must keep the transplant (no native LED drive possible).
+    slots = ["TrafficLightsA01_Head01_Black01_col", "TrafficLightsA01_Led01_Share01_col"]
+    assert native_led_capable(slots, "TrafficLightsLed") is False
+
+
+def test_native_led_capable_false_when_map_does_not_declare_a_slot():
+    assert native_led_capable(["TrafficLightsLed"], None) is False

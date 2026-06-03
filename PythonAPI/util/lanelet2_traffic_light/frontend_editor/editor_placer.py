@@ -22,7 +22,7 @@ from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
 )
 from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
 from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
-    green_arrow_dirs, select_vehicle_transplant,
+    green_arrow_dirs, native_led_capable, select_vehicle_transplant,
 )
 from lanelet2_traffic_light.frontend_editor.arrow_lighting import apply_arrow_lighting
 
@@ -525,9 +525,6 @@ def _spawn_or_update(spec: PlacementSpec,
             snap_target_found = True
             snapped_loc = nearest.get_actor_location()
             snapped_rot = nearest.get_actor_rotation()
-            if adopt_native_scale:
-                # World scale incl. parent shrink (native meshes are ~10x-authored).
-                snapped_scale = nearest.get_actor_transform().scale3d
             # Also retrieve the snap target's StaticMesh — if its pivot differs
             # from the BP's fixed Scene_1024, replace it with the corresponding
             # source mesh so positions align correctly
@@ -538,6 +535,30 @@ def _spawn_or_update(spec: PlacementSpec,
             except Exception:
                 snapped_mesh_asset = None
             mesh_name = snapped_mesh_asset.get_name() if snapped_mesh_asset is not None else "<n/a>"
+            # Hybrid native LED (per-signal, decided AFTER snap): when the map declares
+            # a native LED slot and the snapped mesh carries it, drop the transplant —
+            # the signal keeps its native mesh and the vehicle BP drives the LED slot's
+            # M_JPVehicleLedRYG per set_state. Meshes without the slot (e.g. the odd
+            # 1x-scale heads) keep the transplant. Same self-gate as the BP side.
+            if (use_transplant and profile.vehicle_native_led_slot is not None
+                    and snapped_mesh_asset is not None):
+                try:
+                    slot_names = [
+                        str(e.get_editor_property("material_slot_name"))
+                        for e in snapped_mesh_asset.get_editor_property("static_materials")
+                    ]
+                except Exception:
+                    slot_names = []
+                if native_led_capable(slot_names, profile.vehicle_native_led_slot):
+                    use_transplant = False
+                    adopt_native_scale = True
+                unreal.log(
+                    f"vehicle_native_led: sign_id={spec.sign_id} mesh={mesh_name} "
+                    f"mode={'native' if not use_transplant else 'transplant_fallback'}"
+                )
+            if adopt_native_scale:
+                # World scale incl. parent shrink (native meshes are ~10x-authored).
+                snapped_scale = nearest.get_actor_transform().scale3d
             snap_info = {
                 "label": nearest.get_actor_label(),
                 "xy_dist_cm": dist,

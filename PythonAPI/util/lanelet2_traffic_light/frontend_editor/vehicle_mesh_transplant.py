@@ -42,6 +42,15 @@ def green_arrow_dirs(arrows):
     return frozenset(d for (c, d) in arrows if c == "green")
 
 
+def native_led_capable(slot_names, led_slot):
+    """True when a snapped native mesh can have its R/Y/G lit directly: the map
+    declares a native LED slot (MapProfile.vehicle_native_led_slot) and the mesh
+    carries it. Decides native-vs-transplant per signal AFTER snap (e.g.
+    NishiShinjuku's 14 odd 1x-scale heads lack the slot and keep the transplant).
+    """
+    return led_slot is not None and led_slot in slot_names
+
+
 def select_vehicle_transplant(transplant, transplant_arrow, green_dirs, arrow_native=False):
     """Pick the per-signal transplant config.
 
