@@ -68,3 +68,13 @@ def test_select_vehicle_transplant_plain_when_no_green_dirs():
 def test_select_vehicle_transplant_plain_when_arrow_none():
     plain = {"mesh": "plain"}
     assert select_vehicle_transplant(plain, None, frozenset({"right"})) is plain
+
+
+def test_select_vehicle_transplant_native_arrow_returns_none():
+    # arrow_native: arrow-bearing signals keep their NATIVE mesh (no transplant at all),
+    # so their per-direction arrow slots can be lit directly (NishiShinjuku 2026-06-03).
+    plain = {"mesh": "plain"}
+    arrow = {"mesh": "arrow"}
+    assert select_vehicle_transplant(plain, arrow, frozenset({"right"}), arrow_native=True) is None
+    # signals without green arrows are unaffected by the flag
+    assert select_vehicle_transplant(plain, arrow, frozenset(), arrow_native=True) is plain

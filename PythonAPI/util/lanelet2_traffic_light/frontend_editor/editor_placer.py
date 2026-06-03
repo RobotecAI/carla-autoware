@@ -481,18 +481,31 @@ def _spawn_or_update(spec: PlacementSpec,
     snapped_mesh_asset = None  # StaticMesh asset to adopt in snap mode
     snap_target_found = False
     snap_info = None  # snap detail dict (for report output & reverse-mismatch aggregation)
-    # Green arrows for this signal (lighting side filters to green); used to pick
-    # the 6-light arrow mesh on transplant maps and to drive the BP ActiveArrow* vars.
+    profile = get_map_profile(map_name)
+    # Green arrows for this signal (lighting side filters to green); used to pick the
+    # per-signal mesh strategy and to light the arrow slots after placement.
     green_dirs = green_arrow_dirs(spec.arrows)
-    effective_transplant = select_vehicle_transplant(transplant, transplant_arrow, green_dirs)
+    # Per-map native arrow lighting (e.g. NishiShinjuku): when configured, arrow-bearing
+    # signals keep their NATIVE mesh (select returns None -> plain snap path) and the
+    # native per-direction arrow slots are lit directly.
+    arrow_native_cfg = profile.vehicle_arrow_native
+    effective_transplant = select_vehicle_transplant(
+        transplant, transplant_arrow, green_dirs,
+        arrow_native=arrow_native_cfg is not None)
     use_transplant = effective_transplant is not None and "Pedestrian" not in spec.actor_class_path
+    # Native-arrow signals must also adopt the snap target's WORLD scale: these native
+    # meshes are ~10x-authored and shrunk by a parent actor, so a pose-only snap of the
+    # mesh would render giant (the pedestrian "10x" problem).
+    adopt_native_scale = (arrow_native_cfg is not None and bool(green_dirs)
+                          and "Pedestrian" not in spec.actor_class_path)
+    snapped_scale = None
     # Some maps keep pedestrians on the canonical parent-BP mesh (snap=False): e.g.
     # NishiShinjuku's native TrafficLightB meshes are ~10x scale, so snapping to them
     # would produce giant signals. Such pedestrians are placed at the OSM pose with the
     # correctly-sized canonical mesh (the rest of the snap logic is skipped for them).
     effective_snap = snap_to_existing_mesh
     if ("Pedestrian" in spec.actor_class_path
-            and not get_map_profile(map_name).pedestrian_uses_snap):
+            and not profile.pedestrian_uses_snap):
         effective_snap = False
     if effective_snap:
         label_prefixes = _label_prefixes_for_bp_class(spec.actor_class_path, map_name)
@@ -512,6 +525,9 @@ def _spawn_or_update(spec: PlacementSpec,
             snap_target_found = True
             snapped_loc = nearest.get_actor_location()
             snapped_rot = nearest.get_actor_rotation()
+            if adopt_native_scale:
+                # World scale incl. parent shrink (native meshes are ~10x-authored).
+                snapped_scale = nearest.get_actor_transform().scale3d
             # Also retrieve the snap target's StaticMesh — if its pivot differs
             # from the BP's fixed Scene_1024, replace it with the corresponding
             # source mesh so positions align correctly
@@ -548,6 +564,8 @@ def _spawn_or_update(spec: PlacementSpec,
         # Update only position and rotation of existing actor (label and sign_id are preserved)
         existing.set_actor_location(location, sweep=False, teleport=True)
         existing.set_actor_rotation(rotation, teleport_physics=True)
+        if snapped_scale is not None:
+            existing.set_actor_scale3d(snapped_scale)
         if effective_snap:
             _zero_out_static_mesh_relative_rotation(existing)
             if use_transplant and snap_target_found:
@@ -557,7 +575,7 @@ def _spawn_or_update(spec: PlacementSpec,
                 if "Pedestrian" in spec.actor_class_path:
                     _clear_static_mesh_material_overrides(existing)
         if "Pedestrian" not in spec.actor_class_path:
-            apply_arrow_lighting(existing, green_dirs)
+            apply_arrow_lighting(existing, green_dirs, arrow_native_cfg)
         return existing, False, snap_info
 
     # Skip snap failures before new spawn
@@ -574,6 +592,8 @@ def _spawn_or_update(spec: PlacementSpec,
             f"spawn_actor_from_class failed for {spec.actor_class_path} "
             f"(sign_id={spec.sign_id})"
         )
+    if snapped_scale is not None:
+        actor.set_actor_scale3d(snapped_scale)
 
     # In snap mode, the Relative Rotation baked into the BP's StaticMeshComponent
     # (e.g. Roll=-90, Pitch=85.4) would be double-applied on top of the snap World
@@ -604,7 +624,7 @@ def _spawn_or_update(spec: PlacementSpec,
     actor.set_actor_label(f"{prefix}{spec.sign_id}")
 
     if "Pedestrian" not in spec.actor_class_path:
-        apply_arrow_lighting(actor, green_dirs)
+        apply_arrow_lighting(actor, green_dirs, arrow_native_cfg)
 
     return actor, True, snap_info
 

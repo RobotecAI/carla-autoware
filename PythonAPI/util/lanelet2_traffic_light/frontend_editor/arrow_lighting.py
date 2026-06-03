@@ -47,6 +47,22 @@ def arrow_texture_for_dir(direction):
     return ARROW_TEX_BY_DIR.get(direction)
 
 
+def resolve_arrow_config(config):
+    """Merge a per-map arrow lighting config with the module defaults (Odaiba).
+
+    config keys (all optional): slot_by_dir, tex_by_dir, black_level, white_level.
+    black/white_level None means "keep the material defaults" (the M_JPArrowLit asset
+    defaults fit the Odaiba texture family; e.g. NishiShinjuku needs 0.10/0.40).
+    """
+    config = config or {}
+    return {
+        "slot_by_dir": config.get("slot_by_dir", ARROW_SLOT_BY_DIR),
+        "tex_by_dir": config.get("tex_by_dir", ARROW_TEX_BY_DIR),
+        "black_level": config.get("black_level"),
+        "white_level": config.get("white_level"),
+    }
+
+
 def _slot_names(component):
     """Material slot names of the component's static mesh (editor-only)."""
     sm = component.get_editor_property("static_mesh")
@@ -56,16 +72,19 @@ def _slot_names(component):
             for e in sm.get_editor_property("static_materials")]
 
 
-def apply_arrow_lighting(actor, green_dirs):
+def apply_arrow_lighting(actor, green_dirs, config=None):
     """Override each active green-arrow slot with a DMI of M_JPArrowLit.
 
     For every direction in ``green_dirs`` whose slot exists on the actor's static
     mesh, create a dynamic instance of M_JPArrowLit, set its ``ArrowTex`` to the
-    per-direction T4 texture, and assign it to that slot. Slots absent on the mesh
-    are skipped (no green arrow there). Editor-only. Returns the number of slots lit.
+    per-direction texture, and assign it to that slot. Slots absent on the mesh
+    are skipped (no green arrow there). ``config`` is the per-map override from
+    MapProfile.vehicle_arrow_native (slot/texture maps + black/white levels);
+    None uses the Odaiba defaults. Editor-only. Returns the number of slots lit.
     """
     import unreal
 
+    cfg = resolve_arrow_config(config)
     component = actor.get_component_by_class(unreal.StaticMeshComponent)
     if component is None:
         return 0
@@ -76,7 +95,7 @@ def apply_arrow_lighting(actor, green_dirs):
     names = _slot_names(component)
     lit = 0
     for direction in green_dirs:
-        slot = ARROW_SLOT_BY_DIR.get(direction)
+        slot = cfg["slot_by_dir"].get(direction)
         if slot is None or slot not in names:
             continue
         idx = names.index(slot)
@@ -84,10 +103,14 @@ def apply_arrow_lighting(actor, green_dirs):
         if mid is None:
             unreal.log_warning(f"apply_arrow_lighting: DMI creation failed at slot {slot}")
             continue
-        tex_path = ARROW_TEX_BY_DIR.get(direction)
+        tex_path = cfg["tex_by_dir"].get(direction)
         tex = unreal.load_asset(tex_path) if tex_path else None
         if tex is not None:
             mid.set_texture_parameter_value("ArrowTex", tex)
+        if cfg["black_level"] is not None:
+            mid.set_scalar_parameter_value("BlackLevel", cfg["black_level"])
+        if cfg["white_level"] is not None:
+            mid.set_scalar_parameter_value("WhiteLevel", cfg["white_level"])
         lit += 1
     return lit
 

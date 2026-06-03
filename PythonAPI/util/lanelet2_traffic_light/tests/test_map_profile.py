@@ -49,22 +49,29 @@ def test_adding_a_new_map_is_one_entry():
     assert prof.parent_bp_override == {}  # default
 
 
-def test_nishishinjuku_has_arrow_transplant():
-    from lanelet2_traffic_light.frontend_editor.map_profile import (
-        get_map_profile, TRANSPLANT_VEHICLE_MESH_ARROW,
-    )
-    t = get_map_profile("NishishinjukuMap").vehicle_transplant_arrow
-    assert t is not None
-    assert t["mesh"] == TRANSPLANT_VEHICLE_MESH_ARROW
-    assert t["ignore_snap_z_gate"] is True
-
-
-def test_odaiba_has_no_arrow_transplant():
+def test_nishishinjuku_arrow_signals_are_native():
     from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+    prof = get_map_profile("NishishinjukuMap")
+    # Native arrow lighting replaces the 6-light transplant (2026-06-03 pivot): the
+    # arrow-bearing native units carry per-direction arrow slots, so arrow signals
+    # keep their native mesh (snap, incl. world scale) and light those slots directly.
+    assert prof.vehicle_transplant_arrow is None
+    cfg = prof.vehicle_arrow_native
+    assert cfg is not None
+    assert cfg["slot_by_dir"] == {
+        "left": "TrafficLightsLeftArrow",
+        "straight": "TrafficLightsUpArrow",
+        "right": "TrafficLightsRightArrow",
+    }
+    assert set(cfg["tex_by_dir"]) == {"left", "straight", "right"}
+    assert all(p.startswith("/Game/") for p in cfg["tex_by_dir"].values())
+    assert cfg["black_level"] == 0.10
+    assert cfg["white_level"] == 0.40
+
+
+def test_odaiba_and_default_have_no_arrow_native():
+    from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+    assert get_map_profile("Odaiba").vehicle_arrow_native is None
     assert get_map_profile("Odaiba").vehicle_transplant_arrow is None
-
-
-def test_default_has_no_arrow_transplant():
-    from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
-    assert get_map_profile("Unknown").vehicle_transplant_arrow is None
-    assert get_map_profile(None).vehicle_transplant_arrow is None
+    assert get_map_profile("Unknown").vehicle_arrow_native is None
+    assert get_map_profile(None).vehicle_arrow_native is None

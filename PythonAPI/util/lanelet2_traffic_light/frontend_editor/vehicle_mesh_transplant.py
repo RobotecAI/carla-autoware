@@ -42,10 +42,17 @@ def green_arrow_dirs(arrows):
     return frozenset(d for (c, d) in arrows if c == "green")
 
 
-def select_vehicle_transplant(transplant, transplant_arrow, green_dirs):
-    """Pick the per-signal transplant config: the 6-light arrow mesh when the signal
-    has green arrows and an arrow transplant is configured, otherwise the plain mesh.
+def select_vehicle_transplant(transplant, transplant_arrow, green_dirs, arrow_native=False):
+    """Pick the per-signal transplant config.
+
+    arrow_native (per-map): arrow-bearing signals keep their NATIVE mesh -- the map's
+    arrow units carry per-direction arrow slots, so no transplant is needed and the
+    slots are lit directly (returns None -> the plain native snap path). Otherwise a
+    signal with green arrows uses the 6-light arrow transplant when configured, and
+    every other signal uses the plain transplant (which may itself be None = native).
     """
+    if green_dirs and arrow_native:
+        return None
     if green_dirs and transplant_arrow is not None:
         return transplant_arrow
     return transplant

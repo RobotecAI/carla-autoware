@@ -53,9 +53,9 @@ _NISHISHINJUKU_VEHICLE_TRANSPLANT = {
     "ignore_snap_z_gate": True,
 }
 
-# Arrow (6-light) transplant pose for NishiShinjuku. The 6-light geometry differs
-# from the 3-light SM_JPVehicleLamp, so the pose is a separate set (values are the
-# 3-light starting point; confirmed/updated in the Inc 0 de-risk).
+# Arrow (6-light) transplant pose. Superseded for NishiShinjuku by the native arrow
+# lighting below (2026-06-03); kept as a registry option for future maps whose native
+# arrow units lack per-direction slots.
 _NISHISHINJUKU_VEHICLE_TRANSPLANT_ARROW = {
     "mesh": TRANSPLANT_VEHICLE_MESH_ARROW,
     "scale": 1.0,
@@ -63,6 +63,34 @@ _NISHISHINJUKU_VEHICLE_TRANSPLANT_ARROW = {
     "world_z_offset_cm": -24.0,
     "local_offset_cm": (0.0, 0.0, 0.0),
     "ignore_snap_z_gate": True,
+}
+
+# Native arrow lighting for NishiShinjuku (de-risk 2026-06-03). The arrow-bearing native
+# units (33 units / 21 mesh variants, slot names fully uniform) carry per-direction arrow
+# slots, so arrow signals keep their native mesh (snap pose AND world scale: the meshes
+# are ~10x-authored and shrunk by a parent) and light the slots with M_JPArrowLit using
+# the map's own per-direction arrow textures. black/white_level differ from the Odaiba
+# texture family (these textures saturate at the Odaiba defaults).
+_NISHISHINJUKU_TRAFFIC_DIR = (
+    "/Game/Carla/Maps/Nishishinjuku/Content/NishishinjukuMap/SJK01_P03/"
+    "SJK01_P03_All_GP01/TrafficAssets_Root01_All_GP/TrafficLightA01_Root01_ALL_GP01"
+)
+_NISHISHINJUKU_VEHICLE_ARROW_NATIVE = {
+    "slot_by_dir": {
+        "left": "TrafficLightsLeftArrow",
+        "straight": "TrafficLightsUpArrow",
+        "right": "TrafficLightsRightArrow",
+    },
+    "tex_by_dir": {
+        "left": (_NISHISHINJUKU_TRAFFIC_DIR
+                 + "/TrafficLightsA03_Root01_ALL_GP01/TrafficLightsA01_Led01_Share01_col_arrow_left"),
+        "straight": (_NISHISHINJUKU_TRAFFIC_DIR
+                     + "/TrafficLightsA01_Root01_All_GP01/TrafficLightsA01_Led01_Share01_col_arrow_up"),
+        "right": (_NISHISHINJUKU_TRAFFIC_DIR
+                  + "/TrafficLightsA02_Root01_ALL_GP01/TrafficLightsA01_Led01_Share01_col_arrow_right"),
+    },
+    "black_level": 0.10,
+    "white_level": 0.40,
 }
 
 
@@ -83,6 +111,12 @@ class MapProfile:
     # For transplant maps: the 6-light arrow mesh config used for signals that have
     # green arrows (per-signal selection). None keeps the plain transplant / native.
     vehicle_transplant_arrow: Optional[dict] = None
+
+    # Native arrow lighting config (slot_by_dir / tex_by_dir / black_level / white_level).
+    # When set, arrow-bearing vehicle signals skip the transplant entirely: they snap the
+    # native mesh (pose AND world scale) and light its per-direction arrow slots. None
+    # falls back to the arrow_lighting module defaults (Odaiba slots + T4 textures).
+    vehicle_arrow_native: Optional[dict] = None
 
     # subtype -> parent BP path override for derived-BP generation
     # (e.g. Odaiba pedestrian -> SceneFigure).
@@ -106,7 +140,9 @@ MAP_PROFILES = {
         vehicle_mesh_prefixes=("TrafficLightsA",),
         pedestrian_mesh_prefixes=("TrafficLightB",),
         vehicle_transplant=_NISHISHINJUKU_VEHICLE_TRANSPLANT,
-        vehicle_transplant_arrow=_NISHISHINJUKU_VEHICLE_TRANSPLANT_ARROW,
+        # Arrow signals are NATIVE (no transplant): per-direction arrow slots exist on the
+        # native units, so they keep their own mesh and light those slots (2026-06-03).
+        vehicle_arrow_native=_NISHISHINJUKU_VEHICLE_ARROW_NATIVE,
         # Pedestrians are canonical (snap=False): the native TrafficLightB meshes are
         # ~10x scale, so they keep the correctly-sized canonical parent-BP mesh and are
         # placed at the mesh-derived OSM pose. No parent override (canonical BP).
