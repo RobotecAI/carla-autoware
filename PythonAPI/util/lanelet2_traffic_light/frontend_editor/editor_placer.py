@@ -21,6 +21,7 @@ from lanelet2_traffic_light.frontend_editor.mesh_override_policy import (
     should_skip_mesh_override,
 )
 from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+from lanelet2_traffic_light.frontend_editor.group_dedup import claim_resolved
 from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
     green_arrow_dirs, native_led_capable, select_vehicle_transplant,
 )
@@ -881,17 +882,30 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
 
     created = 0
     updated = 0
+    stale_removed = 0
+    # First-claim ownership: a lanelet2 signal sits in several relations (one per
+    # lanelet that obeys it), so without dedup the same component is added to
+    # multiple controllers and the extra "ghost" groups keep driving (and
+    # overriding) its state every cycle -- the root cause of the freeze defect
+    # (021#4; 2026-06-04: 111 groups, only 42 with back-references). The first
+    # relation to claim a signal owns it; relations left empty spawn no group.
+    claimed_sign_ids: set = set()
+    resolvable = set(sign_id_to_actor)
 
     for g in groups:
+        owned_sids = claim_resolved(
+            [str(w) for w in g.refers], resolvable, claimed_sign_ids)
+        owned_set = set(owned_sids)
+        owned_refers = [w for w in g.refers if str(w) in owned_set]
         # Split member_actors by subtype
         members_by_subtype = split_members_by_subtype(
-            refers=g.refers,
+            refers=owned_refers,
             sign_id_to_actor=sign_id_to_actor,
             sign_id_to_subtype=sign_id_to_subtype,
         )
         # Also consider level-search fallback via find_actor_by_sign_id
         # (for cases not in sign_id_to_actor but present in the level)
-        for way_id in g.refers:
+        for way_id in owned_refers:
             sid = str(way_id)
             if sid in sign_id_to_actor:
                 continue
@@ -899,12 +913,20 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
             if actor is not None:
                 subtype = sign_id_to_subtype.get(sid, "")
                 members_by_subtype.setdefault(subtype, []).append(actor)
-
-        if not members_by_subtype:
-            # Skip groups where all members were not placed (e.g. snap_skipped)
-            continue
+                claimed_sign_ids.add(sid)
 
         label = f"TLGroup_{g.relation_id}"
+        if not members_by_subtype:
+            # No (newly owned) member was placed: skip the group, and remove a
+            # stale actor left by a pre-dedup run so no ghost keeps ticking.
+            stale = existing_labels.pop(label, None)
+            if stale is not None:
+                try:
+                    actor_subsys.destroy_actor(stale)
+                    stale_removed += 1
+                except Exception:
+                    pass
+            continue
         if label in existing_labels:
             group_actor = existing_labels[label]
             # Clear existing Controllers and redo (for idempotency)
@@ -983,6 +1005,10 @@ def _place_groups(groups: list, sign_id_to_actor: dict,
                         f"in group {g.relation_id} subtype={subtype}: {e}"
                     )
 
+    unreal.log(
+        f"_place_groups[dedup]: claimed_signals={len(claimed_sign_ids)} "
+        f"owned_groups={created + updated} stale_removed={stale_removed}"
+    )
     return created, updated
 
 
