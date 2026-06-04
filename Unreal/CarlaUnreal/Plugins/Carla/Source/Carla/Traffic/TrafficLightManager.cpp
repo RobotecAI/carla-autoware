@@ -10,6 +10,7 @@
 #include "YieldSignComponent.h"
 #include "SpeedLimitComponent.h"
 #include "Components/BoxComponent.h"
+#include "EngineUtils.h"
 #include "Runtime/CoreUObject/Public/UObject/ConstructorHelpers.h"
 #include "OpenDrive/OpenDrive.h"
 #include "OpenDrive/MapLogicParser.h"
@@ -798,21 +799,14 @@ void ATrafficLightManager::SpawnSignals()
 void ATrafficLightManager::SetFrozen(bool InFrozen)
 {
   bTrafficLightsFrozen = InFrozen;
-  if (bTrafficLightsFrozen)
+  // Iterate every group actor in the world instead of only the TrafficGroups
+  // map: traffic light groups spawned outside the OpenDRIVE/generated
+  // registration paths (e.g. lanelet2-driven editor placement) never enter
+  // the map and were silently skipped, so freeze_all_traffic_lights() had no
+  // effect on them and their cycle kept overriding client set_state calls.
+  for (TActorIterator<ATrafficLightGroup> It(GetWorld()); It; ++It)
   {
-    for (auto& TrafficGroupPair : TrafficGroups)
-    {
-      auto& TrafficGroup = TrafficGroupPair.Value;
-      TrafficGroup->SetFrozenGroup(true);
-    }
-  }
-  else
-  {
-    for (auto& TrafficGroupPair : TrafficGroups)
-    {
-      auto& TrafficGroup = TrafficGroupPair.Value;
-      TrafficGroup->SetFrozenGroup(false);
-    }
+    It->SetFrozenGroup(InFrozen);
   }
 }
 
