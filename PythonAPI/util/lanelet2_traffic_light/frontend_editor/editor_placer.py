@@ -24,7 +24,9 @@ from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
 from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
     green_arrow_dirs, native_led_capable, select_vehicle_transplant,
 )
-from lanelet2_traffic_light.frontend_editor.arrow_lighting import apply_arrow_lighting
+from lanelet2_traffic_light.frontend_editor.arrow_lighting import (
+    apply_arrow_lighting, arrow_slots_present, resolve_arrow_config,
+)
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -354,7 +356,8 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
                                        max_distance_cm: float = 300.0,
                                        label_prefixes: tuple = ("Traffic_Lights",),
                                        max_z_diff_cm: float = 700.0,
-                                       mesh_z_stats: Optional[dict] = None):
+                                       mesh_z_stats: Optional[dict] = None,
+                                       mesh_slot_predicate=None):
     """Return the nearest existing signal mesh StaticMeshActor to target (XY-distance based).
 
     Distance is computed using **XY plane distance** (changed in Phase 4.2).
@@ -376,6 +379,9 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
         max_z_diff_cm: Absolute Z difference limit when mesh_z_stats is None.
         mesh_z_stats: Dict of `{prefix: MeshZStats}` obtained from
             `_collect_mesh_z_stats()`. Takes priority over the fixed fallback.
+        mesh_slot_predicate: Optional callable(slot_names) -> bool. When given,
+            actors whose static-mesh material slot names fail the predicate are
+            excluded (used to prefer arrow-CAPABLE targets for arrow signals).
 
     Returns:
         (actor or None, xy_distance_cm)
@@ -385,6 +391,7 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
     best_xy_sq = float("inf")
     max_xy_sq = (max_distance_cm * max_distance_cm) if max_distance_cm > 0 else float("inf")
     abs_max_z = max_z_diff_cm if max_z_diff_cm > 0 else float("inf")
+    slot_cache: dict = {}  # mesh name -> slot names (predicate mode only)
 
     for a in actor_subsys.get_all_level_actors():
         if not isinstance(a, unreal.StaticMeshActor):
@@ -412,9 +419,25 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
         dx = loc.x - target.x
         dy = loc.y - target.y
         xy_sq = dx * dx + dy * dy
-        if xy_sq < best_xy_sq and xy_sq <= max_xy_sq:
-            best_xy_sq = xy_sq
-            best_actor = a
+        if xy_sq >= best_xy_sq or xy_sq > max_xy_sq:
+            continue
+        if mesh_slot_predicate is not None:
+            comp = a.get_component_by_class(unreal.StaticMeshComponent)
+            sm = comp.get_editor_property("static_mesh") if comp is not None else None
+            if sm is None:
+                continue
+            key = sm.get_name()
+            if key not in slot_cache:
+                try:
+                    slot_cache[key] = [
+                        str(e.get_editor_property("material_slot_name"))
+                        for e in sm.get_editor_property("static_materials")]
+                except Exception:
+                    slot_cache[key] = []
+            if not mesh_slot_predicate(slot_cache[key]):
+                continue
+        best_xy_sq = xy_sq
+        best_actor = a
     return best_actor, (best_xy_sq ** 0.5 if best_actor is not None else float("inf"))
 
 
@@ -520,14 +543,28 @@ def _spawn_or_update(spec: PlacementSpec,
                 and bool(effective_transplant.get("ignore_snap_z_gate")))
         )
         if ignore_z_gate:
-            nearest, dist = _find_nearest_existing_signal_mesh(
-                location, snap_radius_cm, label_prefixes,
-                max_z_diff_cm=float("inf"), mesh_z_stats=None,
-            )
+            search_kwargs = {"max_z_diff_cm": float("inf"), "mesh_z_stats": None}
         else:
+            search_kwargs = {"mesh_z_stats": mesh_z_stats}
+        # Arrow-bearing native signals PREFER an arrow-CAPABLE target within the
+        # radius: the nearest actor may be a plain 3-light head or an odd compact
+        # unit, whose mesh cannot light any arrow (2026-06-04 full run: 4/36 arrow
+        # signals landed on such meshes). Plain nearest is the fallback, logged.
+        nearest = None
+        dist = float("inf")
+        arrow_capable_hit = False
+        prefer_arrow = bool(green_dirs) and arrow_native_cfg is not None
+        if prefer_arrow:
+            _arrow_cfg = resolve_arrow_config(arrow_native_cfg)
             nearest, dist = _find_nearest_existing_signal_mesh(
                 location, snap_radius_cm, label_prefixes,
-                mesh_z_stats=mesh_z_stats,
+                mesh_slot_predicate=lambda s: arrow_slots_present(s, _arrow_cfg),
+                **search_kwargs,
+            )
+            arrow_capable_hit = nearest is not None
+        if nearest is None:
+            nearest, dist = _find_nearest_existing_signal_mesh(
+                location, snap_radius_cm, label_prefixes, **search_kwargs,
             )
         if nearest is not None:
             snap_target_found = True
@@ -543,6 +580,11 @@ def _spawn_or_update(spec: PlacementSpec,
             except Exception:
                 snapped_mesh_asset = None
             mesh_name = snapped_mesh_asset.get_name() if snapped_mesh_asset is not None else "<n/a>"
+            if prefer_arrow:
+                unreal.log(
+                    f"vehicle_native_arrow: sign_id={spec.sign_id} mesh={mesh_name} "
+                    f"mode={'arrow_capable' if arrow_capable_hit else 'no_arrow_slot_in_radius'}"
+                )
             # Hybrid native LED (per-signal, decided AFTER snap): when the map declares
             # a native LED slot and the snapped mesh carries it, drop the transplant —
             # the signal keeps its native mesh and the vehicle BP drives the LED slot's

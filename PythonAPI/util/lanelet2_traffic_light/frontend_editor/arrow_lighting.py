@@ -63,6 +63,15 @@ def resolve_arrow_config(config):
     }
 
 
+def arrow_slots_present(slot_names, cfg):
+    """True when the mesh carries ANY per-direction arrow slot of the (resolved)
+    config. Used to prefer arrow-CAPABLE snap targets for arrow-bearing signals:
+    the nearest native actor may be a plain 3-light head (or an odd compact unit)
+    whose mesh cannot light any arrow (pure).
+    """
+    return any(slot in slot_names for slot in cfg["slot_by_dir"].values())
+
+
 def _slot_names(component):
     """Material slot names of the component's static mesh (editor-only)."""
     sm = component.get_editor_property("static_mesh")

@@ -35,6 +35,26 @@ def test_resolve_arrow_config_defaults():
     assert cfg["black_level"] is None and cfg["white_level"] is None
 
 
+def test_arrow_slots_present():
+    from lanelet2_traffic_light.frontend_editor.arrow_lighting import (
+        arrow_slots_present, resolve_arrow_config,
+    )
+    cfg = resolve_arrow_config({"slot_by_dir": {
+        "left": "TrafficLightsLeftArrow",
+        "straight": "TrafficLightsUpArrow",
+        "right": "TrafficLightsRightArrow",
+    }})
+    # arrow unit (any direction slot present)
+    assert arrow_slots_present(
+        ["TrafficLightsLed", "TrafficLightsRightArrow", "Body"], cfg) is True
+    # plain 3-light native head: no arrow slot
+    assert arrow_slots_present(["TrafficLightsLed", "Body"], cfg) is False
+    # odd 1x compact head: different slot family entirely
+    assert arrow_slots_present(
+        ["TrafficLightsA01_Head01_Black01_col", "TrafficLightsA01_Led01_Share01_col"],
+        cfg) is False
+
+
 def test_resolve_arrow_config_per_map_override():
     from lanelet2_traffic_light.frontend_editor.arrow_lighting import resolve_arrow_config
     cfg = resolve_arrow_config({
