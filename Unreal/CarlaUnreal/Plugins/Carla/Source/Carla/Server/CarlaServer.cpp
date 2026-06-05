@@ -7,6 +7,7 @@
 #include "Carla/Server/CarlaServer.h"
 #include "Carla.h"
 #include "Carla/Server/CarlaServerResponse.h"
+#include "Carla/Traffic/TrafficLightBase.h"
 #include "Carla/Traffic/TrafficLightGroup.h"
 #include "Carla/OpenDrive/OpenDrive.h"
 #include "Carla/Util/DebugShapeDrawer.h"
@@ -2602,6 +2603,77 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
           " Actor Id: " + FString::FromInt(ActorId));
     }
     return R<void>::Success();
+  };
+
+  BIND_SYNC(set_traffic_light_arrow_state) << [this](
+      cr::ActorId ActorId,
+      uint32_t ArrowState) -> R<void>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "set_traffic_light_arrow_state",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    ECarlaServerResponse Response =
+        CarlaActor->SetTrafficLightArrowState(static_cast<int32>(ArrowState));
+    if (Response != ECarlaServerResponse::Success)
+    {
+      return RespondError(
+          "set_traffic_light_arrow_state",
+          Response,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    return R<void>::Success();
+  };
+
+  BIND_SYNC(get_traffic_light_arrow_state) << [this](
+      cr::ActorId ActorId) -> R<uint32_t>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "get_traffic_light_arrow_state",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    auto* TrafficLight = Cast<ATrafficLightBase>(CarlaActor->GetActor());
+    if (TrafficLight == nullptr)
+    {
+      return RespondError(
+          "get_traffic_light_arrow_state",
+          ECarlaServerResponse::NotATrafficLight,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    return static_cast<uint32_t>(TrafficLight->GetArrowState());
+  };
+
+  BIND_SYNC(get_traffic_light_arrow_capabilities) << [this](
+      cr::ActorId ActorId) -> R<uint32_t>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "get_traffic_light_arrow_capabilities",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    auto* TrafficLight = Cast<ATrafficLightBase>(CarlaActor->GetActor());
+    if (TrafficLight == nullptr)
+    {
+      return RespondError(
+          "get_traffic_light_arrow_capabilities",
+          ECarlaServerResponse::NotATrafficLight,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    return static_cast<uint32_t>(TrafficLight->GetArrowCapabilities());
   };
 
   BIND_SYNC(reset_traffic_light_group) << [this](
