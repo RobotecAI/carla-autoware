@@ -366,6 +366,12 @@ public:
     return ECarlaServerResponse::ActorTypeMismatch;
   }
 
+  /// (color x direction) arrow bitmask, see carla/rpc/TrafficLightArrowState.h.
+  virtual ECarlaServerResponse SetTrafficLightArrowState(int32)
+  {
+    return ECarlaServerResponse::ActorTypeMismatch;
+  }
+
   virtual ETrafficLightState GetTrafficLightState() const
   {
     return ETrafficLightState::Off;
@@ -590,6 +596,8 @@ public:
       UWorld* World);
 
   virtual ECarlaServerResponse SetTrafficLightState(const ETrafficLightState& State) final;
+
+  virtual ECarlaServerResponse SetTrafficLightArrowState(int32 ArrowState) final;
 
   virtual ETrafficLightState GetTrafficLightState() const final;
 

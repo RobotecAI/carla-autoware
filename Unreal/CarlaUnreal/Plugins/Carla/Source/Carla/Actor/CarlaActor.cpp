@@ -1132,6 +1132,24 @@ ECarlaServerResponse FTrafficLightActor::SetTrafficLightState(
   return ECarlaServerResponse::Success;
 }
 
+ECarlaServerResponse FTrafficLightActor::SetTrafficLightArrowState(int32 ArrowState)
+{
+  if (IsDormant())
+  {
+    // Dormant arrow control is not needed for v1 (scenario-driven only).
+  }
+  else
+  {
+    auto TrafficLight = Cast<ATrafficLightBase>(GetActor());
+    if (TrafficLight == nullptr)
+    {
+      return ECarlaServerResponse::NotATrafficLight;
+    }
+    TrafficLight->SetArrowState(ArrowState);
+  }
+  return ECarlaServerResponse::Success;
+}
+
 ETrafficLightState FTrafficLightActor::GetTrafficLightState() const
 {
   if (IsDormant())
