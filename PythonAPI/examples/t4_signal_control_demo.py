@@ -32,8 +32,19 @@ def main():
 
     tl = t4.get_traffic_light_by_lanelet2_id(world, args.vehicle_id)
     ped = t4.get_traffic_light_by_lanelet2_id(world, args.ped_id)
-    check("found_vehicle", tl is not None)
-    check("found_pedestrian", ped is not None)
+    check("found_vehicle", tl is not None
+          and tl.attributes.get("signal_kind") == "vehicle")
+    if ped is not None and ped.attributes.get("signal_kind") != "pedestrian":
+        print(f"demo found_pedestrian=NG reason=kind_mismatch "
+              f"(id {args.ped_id} is {ped.attributes.get('signal_kind')}; "
+              f"pass --ped-id with a real pedestrian id)")
+        peds = [a.attributes.get("lanelet2_id")
+                for a in world.get_actors().filter("traffic.traffic_light*")
+                if a.attributes.get("signal_kind") == "pedestrian"]
+        print(f"demo pedestrian_ids_sample={peds[:8]}")
+        ped = None
+    else:
+        check("found_pedestrian", ped is not None)
     if tl is None:
         print("demo verdict=ABORT (attributes missing? rebuild engine / rerun Full Run)")
         return
