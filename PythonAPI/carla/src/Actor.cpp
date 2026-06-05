@@ -6,6 +6,8 @@
 
 #include <PythonAPI.h>
 
+#include <carla/rpc/TrafficLightArrowState.h>
+
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
 namespace ctm = carla::traffic_manager;
@@ -257,6 +259,19 @@ void export_actor() {
       .value("Unknown", cr::TrafficLightState::Unknown)
   ;
 
+  enum_<cr::TrafficLightArrowState::ArrowState>("TrafficLightArrow")
+      .value("NONE", cr::TrafficLightArrowState::ArrowState::None)
+      .value("GreenLeft", cr::TrafficLightArrowState::ArrowState::GreenLeft)
+      .value("GreenStraight", cr::TrafficLightArrowState::ArrowState::GreenStraight)
+      .value("GreenRight", cr::TrafficLightArrowState::ArrowState::GreenRight)
+      .value("YellowLeft", cr::TrafficLightArrowState::ArrowState::YellowLeft)
+      .value("YellowStraight", cr::TrafficLightArrowState::ArrowState::YellowStraight)
+      .value("YellowRight", cr::TrafficLightArrowState::ArrowState::YellowRight)
+      .value("RedLeft", cr::TrafficLightArrowState::ArrowState::RedLeft)
+      .value("RedStraight", cr::TrafficLightArrowState::ArrowState::RedStraight)
+      .value("RedRight", cr::TrafficLightArrowState::ArrowState::RedRight)
+  ;
+
   class_<cc::TrafficLight, bases<cc::TrafficSign>, boost::noncopyable, std::shared_ptr<cc::TrafficLight>>(
       "TrafficLight",
       no_init)
@@ -272,6 +287,11 @@ void export_actor() {
       .def("get_elapsed_time", &cc::TrafficLight::GetElapsedTime)
       .def("freeze", &cc::TrafficLight::Freeze, (arg("freeze")))
       .def("is_frozen", &cc::TrafficLight::IsFrozen)
+      .def("set_arrow_state", +[](cc::TrafficLight &self, uint32_t arrow_mask) {
+        self.SetArrowState(arrow_mask);
+      }, (arg("arrow_mask")))
+      .def("get_arrow_state", &cc::TrafficLight::GetArrowState)
+      .def("get_arrow_capabilities", &cc::TrafficLight::GetArrowCapabilities)
       .def("get_pole_index", &cc::TrafficLight::GetPoleIndex)
       .def("get_group_traffic_lights", &GetGroupTrafficLights)
       .def("reset_group", &cc::TrafficLight::ResetGroup)
