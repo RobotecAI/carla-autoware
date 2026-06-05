@@ -604,6 +604,20 @@ namespace detail {
     _pimpl->AsyncCall("set_traffic_light_state", traffic_light, traffic_light_state);
   }
 
+  void Client::SetTrafficLightArrowState(
+      rpc::ActorId traffic_light,
+      uint32_t arrow_mask) {
+    _pimpl->AsyncCall("set_traffic_light_arrow_state", traffic_light, arrow_mask);
+  }
+
+  uint32_t Client::GetTrafficLightArrowState(rpc::ActorId traffic_light) {
+    return _pimpl->CallAndWait<uint32_t>("get_traffic_light_arrow_state", traffic_light);
+  }
+
+  uint32_t Client::GetTrafficLightArrowCapabilities(rpc::ActorId traffic_light) {
+    return _pimpl->CallAndWait<uint32_t>("get_traffic_light_arrow_capabilities", traffic_light);
+  }
+
   void Client::SetTrafficLightGreenTime(rpc::ActorId traffic_light, float green_time) {
     _pimpl->AsyncCall("set_traffic_light_green_time", traffic_light, green_time);
   }

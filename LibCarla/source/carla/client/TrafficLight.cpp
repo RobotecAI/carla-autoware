@@ -59,6 +59,18 @@ namespace client {
     return GetEpisode().Lock()->GetActorSnapshot(*this).state.traffic_light_data.time_is_frozen;
   }
 
+  void TrafficLight::SetArrowState(uint32_t arrow_mask) {
+    GetEpisode().Lock()->SetTrafficLightArrowState(*this, arrow_mask);
+  }
+
+  uint32_t TrafficLight::GetArrowState() const {
+    return GetEpisode().Lock()->GetTrafficLightArrowState(*this);
+  }
+
+  uint32_t TrafficLight::GetArrowCapabilities() const {
+    return GetEpisode().Lock()->GetTrafficLightArrowCapabilities(*this);
+  }
+
   uint32_t TrafficLight::GetPoleIndex()
   {
     return GetEpisode().Lock()->GetActorSnapshot(*this).state.traffic_light_data.pole_index;

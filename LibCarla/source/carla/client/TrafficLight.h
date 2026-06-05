@@ -57,6 +57,22 @@ namespace client {
     /// received in the last tick.
     bool IsFrozen() const;
 
+    /// Set the arrow-section bitmask ((color x direction), see
+    /// rpc::TrafficLightArrowState). Bits without a physical face on this
+    /// light are accepted and kept but cannot light up (compare with
+    /// GetArrowCapabilities).
+    void SetArrowState(uint32_t arrow_mask);
+
+    /// Last commanded arrow bitmask (initial value = lanelet2 green arrows).
+    ///
+    /// @note This function calls the simulator.
+    uint32_t GetArrowState() const;
+
+    /// Bitmask of arrow faces physically present on this light.
+    ///
+    /// @note This function calls the simulator.
+    uint32_t GetArrowCapabilities() const;
+
     /// Returns the index of the pole in the traffic light group
     uint32_t GetPoleIndex();
 

@@ -398,6 +398,14 @@ namespace detail {
         rpc::ActorId traffic_light,
         bool freeze);
 
+    void SetTrafficLightArrowState(
+        rpc::ActorId traffic_light,
+        uint32_t arrow_mask);
+
+    uint32_t GetTrafficLightArrowState(rpc::ActorId traffic_light);
+
+    uint32_t GetTrafficLightArrowCapabilities(rpc::ActorId traffic_light);
+
     void ResetTrafficLightGroup(
         rpc::ActorId traffic_light);
 

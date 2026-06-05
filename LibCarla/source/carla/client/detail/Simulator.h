@@ -760,6 +760,18 @@ namespace detail {
       _client.SetTrafficLightState(trafficLight.GetId(), trafficLightState);
     }
 
+    void SetTrafficLightArrowState(TrafficLight &trafficLight, uint32_t arrow_mask) {
+      _client.SetTrafficLightArrowState(trafficLight.GetId(), arrow_mask);
+    }
+
+    uint32_t GetTrafficLightArrowState(const TrafficLight &trafficLight) {
+      return _client.GetTrafficLightArrowState(trafficLight.GetId());
+    }
+
+    uint32_t GetTrafficLightArrowCapabilities(const TrafficLight &trafficLight) {
+      return _client.GetTrafficLightArrowCapabilities(trafficLight.GetId());
+    }
+
     void SetTrafficLightGreenTime(TrafficLight &trafficLight, float greenTime) {
       _client.SetTrafficLightGreenTime(trafficLight.GetId(), greenTime);
     }
