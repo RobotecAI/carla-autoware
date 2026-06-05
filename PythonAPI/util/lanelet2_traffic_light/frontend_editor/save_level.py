@@ -6,11 +6,15 @@ flows leave it None and opt in via the LANELET2_SAVE_LEVEL environment
 variable (mirrors the LANELET2_OSM_PATH pattern).
 """
 import os
+from typing import Mapping, Optional
 
 _TRUTHY = ("1", "true", "yes", "on")
 
 
-def resolve_save_level(explicit=None, environ=None):
+def resolve_save_level(
+    explicit: Optional[bool] = None,
+    environ: Optional[Mapping[str, str]] = None,
+) -> bool:
     """Resolve whether the level should be saved after placement.
 
     Args:
