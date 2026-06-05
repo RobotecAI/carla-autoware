@@ -349,6 +349,18 @@ void UCarlaEpisode::InitializeAtBeginPlay()
     FActorDescription Description;
     Description.Id = UCarlaEpisode_GetTrafficSignId(Actor->GetTrafficSignState());
     Description.Class = Actor->GetClass();
+    // Forward "key:value" actor tags (e.g. lanelet2_id:1412, signal_kind:vehicle)
+    // as actor attributes so clients can identify lanelet2-placed signals.
+    for (const FName &TagName : Actor->Tags)
+    {
+      FString Tag = TagName.ToString();
+      FString Key, Value;
+      if (Tag.Split(TEXT(":"), &Key, &Value) && !Key.IsEmpty())
+      {
+        Description.Variations.Add(Key,
+            FActorAttribute{Key, EActorAttributeType::String, Value});
+      }
+    }
     ActorDispatcher->RegisterActor(*Actor, Description);
   }
 
