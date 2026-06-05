@@ -277,3 +277,33 @@ void ATrafficLightBase::LightChangedCompatibility(ETrafficLightState NewLightSta
 {
   OnTrafficLightStateChanged(NewLightState);
 }
+
+void ATrafficLightBase::BeginPlay()
+{
+  Super::BeginPlay();
+  // Re-apply the placer-stamped (or last saved) arrow mask so the BP visual
+  // layer starts consistent in PIE and packaged builds alike.
+  if (ArrowState != 0 || ArrowCapabilities != 0)
+  {
+    OnArrowStateChanged(ArrowState);
+  }
+}
+
+void ATrafficLightBase::SetArrowState(int32 InArrowState)
+{
+  if (ArrowState != InArrowState)
+  {
+    ArrowState = InArrowState;
+    OnArrowStateChanged(ArrowState);
+  }
+}
+
+int32 ATrafficLightBase::GetArrowState() const
+{
+  return ArrowState;
+}
+
+int32 ATrafficLightBase::GetArrowCapabilities() const
+{
+  return ArrowCapabilities;
+}

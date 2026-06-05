@@ -77,6 +77,18 @@ public:
   UFUNCTION(Category = "Traffic Light", BlueprintCallable)
   void SetGroupTrafficLights(TArray<ATrafficLightBase *> InGroupTrafficLights);
 
+  // --- Arrow sections (lanelet2-driven JP arrow lights) ----------------------
+  // (color x direction) bitmask, see carla/rpc/TrafficLightArrowState.h.
+
+  UFUNCTION(Category = "Traffic Light", BlueprintCallable)
+  void SetArrowState(int32 InArrowState);
+
+  UFUNCTION(Category = "Traffic Light", BlueprintCallable)
+  int32 GetArrowState() const;
+
+  UFUNCTION(Category = "Traffic Light", BlueprintCallable)
+  int32 GetArrowCapabilities() const;
+
   // used from replayer
   void SetElapsedTime(float InElapsedTime);
 
@@ -92,10 +104,27 @@ public:
 
 protected:
 
+  virtual void BeginPlay() override;
+
   UFUNCTION(Category = "Traffic Light", BlueprintImplementableEvent)
   void OnTrafficLightStateChanged(ETrafficLightState TrafficLightState);
 
+  /// Mirrors OnTrafficLightStateChanged for the arrow mask.
+  UFUNCTION(Category = "Traffic Light", BlueprintImplementableEvent)
+  void OnArrowStateChanged(int32 NewArrowState);
+
 private:
+
+  /// (color x direction) bitmask, see carla/rpc/TrafficLightArrowState.h.
+  /// Initial value is stamped by the lanelet2 editor placer (lanelet2 green
+  /// arrows = the constant-on default look) and persists with the level.
+  UPROPERTY(Category = "Traffic Light", EditAnywhere)
+  int32 ArrowState = 0;
+
+  /// Bitmask of arrow faces physically present on the mesh (placer-stamped).
+  /// requested & ~capabilities = bits that cannot light (no face).
+  UPROPERTY(Category = "Traffic Light", EditAnywhere)
+  int32 ArrowCapabilities = 0;
 
   UPROPERTY(Category = "Traffic Light", VisibleAnywhere)
   TArray<TObjectPtr<AWheeledVehicleAIController>> Vehicles;
