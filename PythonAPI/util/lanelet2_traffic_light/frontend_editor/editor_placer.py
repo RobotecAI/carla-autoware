@@ -26,7 +26,11 @@ from lanelet2_traffic_light.frontend_editor.vehicle_mesh_transplant import (
     green_arrow_dirs, native_led_capable, select_vehicle_transplant,
 )
 from lanelet2_traffic_light.frontend_editor.arrow_lighting import (
-    apply_arrow_lighting, arrow_slots_present, resolve_arrow_config,
+    apply_arrow_lighting, arrow_slot_indices, arrow_slots_present,
+    resolve_arrow_config,
+)
+from lanelet2_traffic_light.frontend_editor.arrow_runtime import (
+    capabilities_mask, initial_arrow_mask,
 )
 
 
@@ -648,6 +652,7 @@ def _spawn_or_update(spec: PlacementSpec,
                     _clear_static_mesh_material_overrides(existing)
         if "Pedestrian" not in spec.actor_class_path:
             apply_arrow_lighting(existing, green_dirs, arrow_native_cfg)
+        _stamp_runtime_signal_props(existing, spec, green_dirs, arrow_native_cfg)
         return existing, False, snap_info
 
     # Skip snap failures before new spawn
@@ -697,8 +702,44 @@ def _spawn_or_update(spec: PlacementSpec,
 
     if "Pedestrian" not in spec.actor_class_path:
         apply_arrow_lighting(actor, green_dirs, arrow_native_cfg)
+    _stamp_runtime_signal_props(actor, spec, green_dirs, arrow_native_cfg)
 
     return actor, True, snap_info
+
+
+def _stamp_runtime_signal_props(actor, spec, green_dirs, arrow_cfg) -> None:
+    """Stamp runtime-control properties on the placed signal actor (editor):
+
+    - actor tags ``lanelet2_id:<sign_id>`` / ``signal_kind:<vehicle|pedestrian>``
+      (forwarded as client-visible attributes by the UCarlaEpisode registration)
+    - C++ ArrowState / ArrowCapabilities bitmasks (vehicle only)
+    - BP ArrowSlotLeft/Straight/Right ints (vehicle only; -1 = no face)
+
+    All values persist with the level (Spec B compatible).
+    """
+    kind = "pedestrian" if "Pedestrian" in spec.actor_class_path else "vehicle"
+    try:
+        tags = [t for t in actor.get_editor_property("tags")
+                if not str(t).startswith(("lanelet2_id:", "signal_kind:"))]
+        tags += [f"lanelet2_id:{spec.sign_id}", f"signal_kind:{kind}"]
+        actor.set_editor_property("tags", tags)
+    except Exception as e:
+        unreal.log_warning(f"_stamp_runtime_signal_props: tags failed: {e}")
+    if kind == "pedestrian":
+        return
+    indices = arrow_slot_indices(actor, arrow_cfg)
+    mask = initial_arrow_mask(green_dirs)
+    caps = capabilities_mask(indices)
+    try:
+        actor.set_editor_property("arrow_state", mask)
+        actor.set_editor_property("arrow_capabilities", caps)
+        for d, prop in (("left", "ArrowSlotLeft"), ("straight", "ArrowSlotStraight"),
+                        ("right", "ArrowSlotRight")):
+            actor.set_editor_property(prop, indices.get(d, -1))
+    except Exception as e:
+        unreal.log_warning(f"_stamp_runtime_signal_props: props failed: {e}")
+    unreal.log(
+        f"runtime_props: sign_id={spec.sign_id} kind={kind} mask={mask} caps={caps}")
 
 
 def _override_static_mesh(actor, new_mesh) -> None:

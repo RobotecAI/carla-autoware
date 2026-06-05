@@ -124,6 +124,22 @@ def apply_arrow_lighting(actor, green_dirs, config=None):
     return lit
 
 
+def arrow_slot_indices(actor, config=None):
+    """Per-direction material slot index of the actor's CURRENT static mesh
+    ({direction: index}, directions without a face omitted). Editor-only.
+    Used by the placer to stamp runtime arrow properties (BP slot vars and
+    the capabilities mask)."""
+    import unreal
+
+    cfg = resolve_arrow_config(config)
+    component = actor.get_component_by_class(unreal.StaticMeshComponent)
+    if component is None:
+        return {}
+    names = _slot_names(component)
+    return {d: names.index(slot)
+            for d, slot in cfg["slot_by_dir"].items() if slot in names}
+
+
 def set_arrow_intensity_on_actor(actor, enabled):
     """Toggle the arrows on one actor by setting Intensity on every applied
     M_JPArrowLit DMI (0 = off, ARROW_INTENSITY_ON = on). Editor-only.
