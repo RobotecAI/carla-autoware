@@ -34,7 +34,7 @@ def main():
         time.sleep(1.0)
     print(f"smoke freeze_all_held_30s={held} per_light_frozen={tl.is_frozen()}")
     world.freeze_all_traffic_lights(False)
-    print("smoke verdict=DONE (held=False -> 021#4 reproduced)")
+    print("smoke verdict=DONE (expected after fix: held=True frozen=True)")
 
 
 if __name__ == "__main__":
