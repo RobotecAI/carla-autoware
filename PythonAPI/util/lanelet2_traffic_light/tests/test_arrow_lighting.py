@@ -13,7 +13,9 @@ def test_arrow_slot_for_dir():
 
 def test_arrow_texture_for_dir_points_to_t4():
     for d in ("left", "straight", "right"):
-        assert arrow_texture_for_dir(d).startswith("/T4/")
+        tex = arrow_texture_for_dir(d)
+        assert tex.startswith("/T4/")
+        assert "T_JPArrow2_" in tex  # 2-dot textures transplanted from NishiShinjuku
     assert arrow_texture_for_dir("nope") is None
 
 
