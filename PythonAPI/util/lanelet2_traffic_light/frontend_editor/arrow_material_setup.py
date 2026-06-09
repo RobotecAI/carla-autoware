@@ -27,9 +27,12 @@ DEFAULT_ARROW_TEX = "%s/T_JPArrow_Right" % MATERIAL_DIR
 
 # De-risk defaults (validated 2026-06-02: clean green dot arrow on black lens via the G
 # channel). BlackLevel sits just above the green-lens G level; final tune in PIE (bloom on).
-DEFAULT_INTENSITY = 12.0
-DEFAULT_BLACK_LEVEL = 0.005
-DEFAULT_WHITE_LEVEL = 0.025
+# Intensity default 0 = OFF; the BP arrow handler raises it to its lit value
+# (Select Float A, currently 20 = ARROW_INTENSITY_ON) on the active arrow at
+# runtime. Editor-stopped arrows then show dark, matching the real off-state.
+DEFAULT_INTENSITY = 0.0
+DEFAULT_BLACK_LEVEL = 0.051
+DEFAULT_WHITE_LEVEL = 0.28
 
 mel = unreal.MaterialEditingLibrary
 MP_BASE = unreal.MaterialProperty.MP_BASE_COLOR

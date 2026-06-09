@@ -36,9 +36,10 @@ ARROW_TEX_BY_DIR = {
     "right": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Straight.T_JPArrow2_Straight",
 }
 
-# Default ON value for the material's Intensity scalar (PIE-tuned; the material
-# asset carries the same default).
-ARROW_INTENSITY_ON = 30.0
+# Default ON value for the M_JPArrowLit Intensity scalar when toggled via
+# arrow_toggle/EUW. Matches the BP_VehicleTrafficLight arrow handler's lit value
+# (Select Float A), kept in sync so toggling gives the same brightness as the BP.
+ARROW_INTENSITY_ON = 20.0
 
 
 def arrow_slot_for_dir(direction):
