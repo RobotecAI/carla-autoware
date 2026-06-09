@@ -24,13 +24,16 @@ ARROW_SLOT_BY_DIR = {
     "right": "Green_Right_Arrow",
 }
 
-# Direction -> T4 arrow texture. 2-dot LED arrows transplanted from the
-# NishiShinjuku native textures (more realistic than the 1-dot Odaiba originals),
-# copied into T4 so the cook is self-contained for transplant maps.
+# Direction -> T4 arrow texture. Odaiba's arrow mesh encodes DIRECTION via the
+# slot orientation (left slot is rotated to show a left arrow, right slot a right
+# arrow), so every slot uses the same UP-pointing 2-dot texture; the mesh makes
+# it left/up/right. (Per-direction figure textures like T_JPArrow2_Left would be
+# rotated twice and come out wrong.) NishiShinjuku uses its own per-map config
+# (_NISHISHINJUKU_VEHICLE_ARROW_NATIVE) so it is unaffected.
 ARROW_TEX_BY_DIR = {
-    "left": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Left.T_JPArrow2_Left",
+    "left": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Straight.T_JPArrow2_Straight",
     "straight": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Straight.T_JPArrow2_Straight",
-    "right": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Right.T_JPArrow2_Right",
+    "right": "/T4/TrafficLightSample/VehicleTrafficLight/T_JPArrow2_Straight.T_JPArrow2_Straight",
 }
 
 # Default ON value for the material's Intensity scalar (PIE-tuned; the material
