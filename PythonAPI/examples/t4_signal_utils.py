@@ -5,6 +5,15 @@ Ship alongside the map: `import t4_signal_utils as t4`.
 Signals placed by the lanelet2 pipeline expose two string attributes:
   lanelet2_id  -- the lanelet2 sign way id (e.g. "1412")
   signal_kind  -- "vehicle" or "pedestrian"
+
+Arrow mask layout (carla.TrafficLightArrow, int32, FROZEN):
+  direction index: 0=Left 1=Straight 2=Right 3=UpLeft 4=UpRight
+                   5=Down (reserved) 6=DownLeft 7=DownRight
+  bits  0-7  green row (visually implemented)
+  bits  8-15 yellow row (reserved)   bits 16-23 red row (reserved)
+  bits 24-30 User1..User7 (special arrows, e.g. U-turn)
+Sections OR together: set_arrow_state(GreenLeft | GreenStraight).
+requested & ~get_arrow_capabilities() = bits with no physical face.
 """
 
 
