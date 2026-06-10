@@ -6,6 +6,7 @@ scenario_simulator_v2 V2I traffic lights -- ss2 publishes the same topics
 itself (see README).
 """
 import argparse
+import threading
 import time
 
 import carla
@@ -69,6 +70,17 @@ class V2IPublisherNode(Node):
         self.get_logger().info(
             f"v2i relations={len(self._relation_to_ways)} osm={args.osm_path}")
         self._connect_carla()
+        # CARLA actor state reads are ~7-10 ms per RPC call; reading all
+        # 120 vehicle lights sequentially takes ~1 s, far too slow for the
+        # 100 ms publish period.  Run the CARLA poll in a background thread
+        # so the ROS2 timer can publish from a fresh snapshot without
+        # blocking the executor.
+        self._states_lock = threading.Lock()
+        self._states_by_way: dict = {}
+        self._stop_poll = threading.Event()
+        self._poll_thread = threading.Thread(
+            target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
         self.create_timer(1.0 / args.rate_hz, self._tick)
 
     def _connect_carla(self):
@@ -93,10 +105,59 @@ class V2IPublisherNode(Node):
                 self._lights_by_way[int(way)] = (actor, kind)
         self.get_logger().info(f"v2i lights={len(self._lights_by_way)}")
 
+    def _poll_loop(self):
+        """Background thread: continuously re-read CARLA actor states.
+
+        Each full sweep of all lights takes ~1 s on a live CARLA instance
+        (sequential RPC).  Pedestrian lights have no arrow units; skip the
+        RPC and report mask 0.  This saves ~40 % of calls.
+        The result dict is published under a lock.
+        """
+        while not self._stop_poll.is_set():
+            radius = self._args.radius_m
+            ego = None
+            if radius > 0:
+                ego = self._ego_location()
+                if ego is None:
+                    self._warn_once(
+                        "no_ego",
+                        "v2i ego not found (role_name=%s/hero); nothing published"
+                        " -- use --radius-m 0 to publish all lights"
+                        % self._args.ego_role_name)
+                    time.sleep(0.5)
+                    continue
+            new_states: dict = {}
+            all_failed = True
+            for way, (actor, kind) in list(self._lights_by_way.items()):
+                try:
+                    if ego is not None and actor.get_location().distance(ego) > radius:
+                        continue
+                    arrow = actor.get_arrow_state() if kind == "vehicle" else 0
+                    new_states[way] = (
+                        _STATE_NAMES.get(actor.get_state(), "off"),
+                        arrow, kind)
+                    all_failed = False
+                except RuntimeError as e:
+                    self._warn_once(f"read_fail:{way}",
+                                    f"v2i read failed way={way}: {e}")
+            if all_failed and self._lights_by_way:
+                self._warn_once(
+                    "all_reads_failed",
+                    "v2i all light reads failed lights=%d -- CARLA world may"
+                    " have been reloaded; restart this node to rebuild actor"
+                    " handles" % len(self._lights_by_way))
+            with self._states_lock:
+                self._states_by_way = new_states
+            # Yield between sweeps: with few lights in radius the RPC loop alone would spin hot.
+            time.sleep(0.05)
+
     def _warn_once(self, key, message):
         if key not in self._warned:
             self._warned.add(key)
-            self.get_logger().warning(message)
+            try:
+                self.get_logger().warning(message)
+            except Exception:
+                pass  # node may be destroyed while the poll thread drains
 
     def _ego_location(self):
         vehicles = list(self._world.get_actors().filter("vehicle.*"))
@@ -107,35 +168,13 @@ class V2IPublisherNode(Node):
         return None
 
     def _tick(self):
-        radius = self._args.radius_m
-        ego = None
-        if radius > 0:
-            ego = self._ego_location()
-            if ego is None:
-                self._warn_once(
-                    "no_ego",
-                    "v2i ego not found (role_name=%s/hero); nothing published"
-                    " -- use --radius-m 0 to publish all lights"
-                    % self._args.ego_role_name)
-                return
-        states_by_way = {}
-        for way, (actor, kind) in self._lights_by_way.items():
-            try:
-                if ego is not None and actor.get_location().distance(ego) > radius:
-                    continue
-                states_by_way[way] = (
-                    _STATE_NAMES.get(actor.get_state(), "off"),
-                    actor.get_arrow_state(), kind)
-            except RuntimeError as e:
-                self._warn_once(f"read_fail:{way}",
-                                f"v2i read failed way={way}: {e}")
-        if not states_by_way and self._lights_by_way:
-            # Likely a CARLA world reload: every cached actor handle is stale.
-            self._warn_once(
-                "all_reads_failed",
-                "v2i all light reads failed lights=%d -- CARLA world may have"
-                " been reloaded; restart this node to rebuild actor handles"
-                % len(self._lights_by_way))
+        # Publish from the most recent snapshot fetched by the background
+        # poll thread.  If the snapshot is still empty (first sweep not yet
+        # done), skip this tick silently rather than publishing stale data.
+        with self._states_lock:
+            states_by_way = dict(self._states_by_way)
+        if not states_by_way:
+            return
         groups = conversion.assemble_groups(
             self._relation_to_ways, states_by_way, self._args.id_mode)
         msg = TrafficLightGroupArray()
@@ -177,5 +216,7 @@ def main(argv=None):
         rclpy.spin(node)
     finally:
         if node is not None:
+            node._stop_poll.set()
+            node._poll_thread.join(timeout=2.0)
             node.destroy_node()
         rclpy.shutdown()
