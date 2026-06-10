@@ -114,7 +114,18 @@ def parse_osm(osm_path: str) -> tuple[list[TrafficLightSpec], list[GroupSpec]]:
     return traffic_lights, groups
 
 
-_ARROW_DIRECTION_MAP = {"left": "left", "right": "right", "up": "straight"}
+# lanelet2 'arrow' tag -> internal direction. "up" normalizes to "straight".
+# Diagonals map to themselves. "down" (lane-use control; reserved bit slot)
+# is intentionally absent: it falls through to the warn+skip path below.
+_ARROW_DIRECTION_MAP = {
+    "left": "left",
+    "right": "right",
+    "up": "straight",
+    "up_left": "up_left",
+    "up_right": "up_right",
+    "down_left": "down_left",
+    "down_right": "down_right",
+}
 
 
 def parse_arrow_bulbs(osm_path: str) -> dict[int, frozenset[tuple[str, str]]]:
@@ -122,8 +133,8 @@ def parse_arrow_bulbs(osm_path: str) -> dict[int, frozenset[tuple[str, str]]]:
 
     A `light_bulbs` way carries a `traffic_light_id` tag (the traffic_light way it
     belongs to) and references bulb nodes via `nd`. Each bulb node may carry a
-    `color` (red/yellow/green) and an `arrow` (left/right/up) tag. Only bulbs with
-    an `arrow` tag are returned. Color is preserved (not filtered) so a future
+    `color` (red/yellow/green) and an `arrow` (left/right/up/up_left/up_right/down_left/down_right) tag.
+    Only bulbs with an `arrow` tag are returned. Color is preserved (not filtered) so a future
     non-green arrow needs no parser change; the lighting side filters to green.
     `arrow=up` normalizes to "straight"; unknown directions are warned and skipped
     (no mesh slot exists for them).

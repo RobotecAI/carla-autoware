@@ -130,7 +130,22 @@ def test_parse_arrow_bulbs_no_arrow_tl_absent_or_empty(arrows_osm_path):
 
 
 def test_parse_arrow_bulbs_warns_on_unknown_direction(arrows_osm_path):
-    with pytest.warns(UserWarning, match="unknown arrow direction"):
+    # lower_left (fixture node 14) is a genuinely unknown direction;
+    # the reserved 'down' has its own dedicated test below.
+    with pytest.warns(UserWarning, match="unknown arrow direction 'lower_left'"):
+        parse_arrow_bulbs(arrows_osm_path)
+
+
+def test_parse_arrow_bulbs_accepts_diagonal_directions(arrows_osm_path):
+    bulbs = parse_arrow_bulbs(arrows_osm_path)
+    # 1003 has green up_left / down_right; 'down' is a reserved slot -> skipped.
+    assert bulbs[1003] == frozenset(
+        {("green", "up_left"), ("green", "down_right")}
+    )
+
+
+def test_parse_arrow_bulbs_skips_reserved_down(arrows_osm_path):
+    with pytest.warns(UserWarning, match="unknown arrow direction 'down'"):
         parse_arrow_bulbs(arrows_osm_path)
 
 

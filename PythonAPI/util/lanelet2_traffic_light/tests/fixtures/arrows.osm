@@ -31,4 +31,18 @@
     <nd ref='3'/><nd ref='4'/>
     <tag k='type' v='light_bulbs'/><tag k='traffic_light_id' v='1002'/>
   </way>
+  <!-- TL way 1003: diagonal arrows (up_left, down_right) + reserved 'down' (skipped) -->
+  <node id='5' lat='35.0' lon='139.0'><tag k='local_x' v='500.0'/><tag k='local_y' v='200.0'/></node>
+  <node id='6' lat='35.0' lon='139.0'><tag k='local_x' v='501.0'/><tag k='local_y' v='200.0'/></node>
+  <node id='15' lat='35.0' lon='139.0'><tag k='local_x' v='500.0'/><tag k='local_y' v='200.0'/><tag k='color' v='green'/><tag k='arrow' v='up_left'/></node>
+  <node id='16' lat='35.0' lon='139.0'><tag k='local_x' v='500.0'/><tag k='local_y' v='200.0'/><tag k='color' v='green'/><tag k='arrow' v='down_right'/></node>
+  <node id='17' lat='35.0' lon='139.0'><tag k='local_x' v='500.0'/><tag k='local_y' v='200.0'/><tag k='color' v='green'/><tag k='arrow' v='down'/></node>
+  <way id='1003'>
+    <nd ref='5'/><nd ref='6'/>
+    <tag k='type' v='traffic_light'/><tag k='subtype' v='red_yellow_green'/><tag k='height' v='0.45'/>
+  </way>
+  <way id='2003'>
+    <nd ref='15'/><nd ref='16'/><nd ref='17'/>
+    <tag k='type' v='light_bulbs'/><tag k='traffic_light_id' v='1003'/>
+  </way>
 </osm>
