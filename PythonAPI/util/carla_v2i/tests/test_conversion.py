@@ -79,10 +79,10 @@ def test_assemble_groups_representative_first_resolvable():
     # way 100 is absent from CARLA; 101 acts as representative for 901.
     states = {101: ("red", 0, "vehicle"), 102: ("green", 0, "vehicle")}
     groups = assemble_groups(rel2ways, states)
-    by_id = dict(groups)
+    by_id = {gid: (rep, elems) for gid, rep, elems in groups}
     assert set(by_id) == {901, 902}
-    assert by_id[901] == [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)]
-    assert by_id[902] == [(COLOR_GREEN, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)]
+    assert by_id[901] == (101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])
+    assert by_id[902] == (102, [(COLOR_GREEN, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])
 
 
 def test_assemble_groups_skips_unresolvable_relation():
@@ -93,14 +93,14 @@ def test_assemble_groups_skips_unresolvable_relation():
 def test_assemble_groups_way_id_mode():
     states = {101: ("red", 0, "vehicle")}
     groups = assemble_groups({901: [101]}, states, id_mode="way")
-    assert groups == [(101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
+    assert groups == [(101, 101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
 
 
 def test_assemble_groups_way_id_mode_dedups_shared_way():
     # One physical light referred by two regulatory elements -> one group.
     states = {101: ("red", 0, "vehicle")}
     groups = assemble_groups({901: [101], 903: [101]}, states, id_mode="way")
-    assert groups == [(101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
+    assert groups == [(101, 101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
 
 
 # --- predictions (Phase 2) ---
@@ -137,3 +137,11 @@ def test_predict_states_from_yellow():
 
 def test_predict_states_zero_duration_phase_returns_empty():
     assert predict_states("green", 0.0, 10.0, 0.0, 10.0, 3) == []
+
+
+def test_predict_states_negative_first_offset_passes_through():
+    # elapsed overshoots the phase: first offset is negative; the caller
+    # (node.py) clamps it -- the pure function reports the raw walk.
+    got = predict_states("green", elapsed=11.0, green_t=10.0, yellow_t=3.0,
+                         red_t=10.0, steps=1)
+    assert got == [(-1.0, "yellow")]

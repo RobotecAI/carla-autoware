@@ -74,12 +74,15 @@ def build_relation_to_ways(osm_path: str) -> dict:
 
 def assemble_groups(relation_to_ways: dict, states_by_way: dict,
                     id_mode: str = "relation") -> list:
-    """[(group_id, elements), ...] from current CARLA states.
+    """[(group_id, representative_way, elements), ...] from current CARLA states.
 
     states_by_way: {way_id: (main_state, arrow_mask, signal_kind)}.
     relation mode: the first way of a relation that has a CARLA state acts
     as the representative (members of one relation show the same signal).
     way mode: one group per way that has a state (AWSIM WayId parity).
+
+    Returns (group_id, representative_way, elements) so callers can attach
+    per-light extras (e.g. predictions) without re-deriving the representative.
     """
     groups = []
     if id_mode == "way":
@@ -88,14 +91,15 @@ def assemble_groups(relation_to_ways: dict, states_by_way: dict,
             for way in relation_ways:
                 if way in states_by_way and way not in seen:
                     seen.add(way)
-                    groups.append((way, elements_for(*states_by_way[way])))
+                    groups.append((way, way, elements_for(*states_by_way[way])))
         return groups
     for relation_id, relation_ways in relation_to_ways.items():
         representative = next(
             (w for w in relation_ways if w in states_by_way), None)
         if representative is None:
             continue
-        groups.append((relation_id, elements_for(*states_by_way[representative])))
+        groups.append((relation_id, representative,
+                       elements_for(*states_by_way[representative])))
     return groups
 
 
@@ -111,6 +115,10 @@ def predict_states(main_state: str, elapsed: float, green_t: float,
     deterministic cycle table forward from the current position. Returns []
     when the light is not in the cycle (off/unknown) -- e.g. frozen lights
     have no future plan and honestly report no predictions.
+
+    The first offset may be negative when elapsed exceeds the current phase
+    duration (CARLA reads can overshoot by one tick); clamping is the
+    caller's responsibility (node.py uses max(dt, 0.0)).
     """
     if main_state not in _CYCLE_ORDER:
         return []

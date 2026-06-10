@@ -54,7 +54,7 @@ def main():
             arrow = actor.get_arrow_state() if kind == "vehicle" else 0
             states_by_way[int(way)] = (name_of[actor.get_state()], arrow, kind)
     rel2ways = conversion.build_relation_to_ways(args.osm_path)
-    expected = {gid: elems for gid, elems in
+    expected = {gid: elems for gid, _rep, elems in
                 conversion.assemble_groups(rel2ways, states_by_way)}
 
     ok_rate = 8.0 <= rate <= 12.0

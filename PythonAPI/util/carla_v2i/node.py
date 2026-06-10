@@ -106,6 +106,7 @@ class V2IPublisherNode(Node):
                 kind = actor.attributes.get("signal_kind", "vehicle")
                 self._lights_by_way[int(way)] = (actor, kind)
         self.get_logger().info(f"v2i lights={len(self._lights_by_way)}")
+        self._ego_actor = None
 
     def _poll_loop(self):
         """Background thread: continuously re-read CARLA actor states.
@@ -130,10 +131,12 @@ class V2IPublisherNode(Node):
                     continue
             new_states: dict = {}
             all_failed = True
+            any_in_radius = False
             for way, (actor, kind) in list(self._lights_by_way.items()):
                 try:
                     if ego is not None and actor.get_location().distance(ego) > radius:
                         continue
+                    any_in_radius = True
                     main_state = _STATE_NAMES.get(actor.get_state(), "off")
                     arrow = actor.get_arrow_state() if kind == "vehicle" else 0
                     timing = None
@@ -151,7 +154,7 @@ class V2IPublisherNode(Node):
                 except RuntimeError as e:
                     self._warn_once(f"read_fail:{way}",
                                     f"v2i read failed way={way}: {e}")
-            if all_failed and self._lights_by_way:
+            if all_failed and any_in_radius and self._lights_by_way:
                 self._warn_once(
                     "all_reads_failed",
                     "v2i all light reads failed lights=%d -- CARLA world may"
@@ -171,10 +174,16 @@ class V2IPublisherNode(Node):
                 pass  # node may be destroyed while the poll thread drains
 
     def _ego_location(self):
+        if self._ego_actor is not None:
+            try:
+                return self._ego_actor.get_location()
+            except RuntimeError:
+                self._ego_actor = None  # despawned/reloaded: re-discover
         vehicles = list(self._world.get_actors().filter("vehicle.*"))
         for role in dict.fromkeys((self._args.ego_role_name, "hero")):
             for actor in vehicles:
                 if actor.attributes.get("role_name") == role:
+                    self._ego_actor = actor
                     return actor.get_location()
         return None
 
@@ -193,7 +202,7 @@ class V2IPublisherNode(Node):
             self._relation_to_ways, states3, self._args.id_mode)
         msg = TrafficLightGroupArray()
         msg.stamp = now.to_msg()
-        for group_id, elements in groups:
+        for group_id, rep_way, elements in groups:
             group = TrafficLightGroup()
             group.traffic_light_group_id = group_id
             for color, shape, status, confidence in elements:
@@ -204,14 +213,6 @@ class V2IPublisherNode(Node):
             # Attach predictions when prediction_steps > 0 and timing is
             # available for the representative way of this group.
             if self._args.prediction_steps > 0:
-                # Identify representative way using the same rule as
-                # assemble_groups: first way in relation that has a state.
-                if self._args.id_mode == "relation":
-                    relation_ways = self._relation_to_ways.get(group_id, [])
-                    rep_way = next(
-                        (w for w in relation_ways if w in states), None)
-                else:
-                    rep_way = group_id if group_id in states else None
                 if rep_way is not None:
                     main_state, arrow_mask, kind, timing = states[rep_way]
                     if timing is not None:
