@@ -17,7 +17,10 @@ from carla_v2i import conversion
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Topic gate for carla_v2i. Freeze CARLA traffic lights "
+                    "first (world.freeze_all_traffic_lights(True)) -- with "
+                    "cycling lights the snapshot comparison can flake.")
     parser.add_argument("--osm-path", required=True)
     parser.add_argument("--topic", default="/v2x/traffic_signals")
     parser.add_argument("--seconds", type=float, default=5.0)
