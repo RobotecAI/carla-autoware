@@ -1,9 +1,12 @@
 """Pure-logic tests for CARLA -> TrafficLightGroupArray conversion (no ROS)."""
+import os
+
 from carla_v2i.conversion import (
     COLOR_RED, COLOR_AMBER, COLOR_GREEN,
     SHAPE_CIRCLE, SHAPE_LEFT, SHAPE_UP, SHAPE_RIGHT, SHAPE_DOWN_RIGHT,
     STATUS_SOLID_ON, STATUS_FLASHING, CONFIDENCE,
     elements_for,
+    build_relation_to_ways, assemble_groups,
 )
 
 
@@ -56,3 +59,44 @@ def test_user_bits_ignored():
     # User-defined bits (>=24) fall outside the 0-7 direction range the
     # row loop iterates, so they are never converted to elements.
     assert elements_for("off", 1 << 24, "vehicle") == []
+
+
+# --- relation grouping ---
+
+
+def _mini_osm():
+    return os.path.join(os.path.dirname(__file__), "fixtures", "mini_map.osm")
+
+
+def test_build_relation_to_ways():
+    rel2ways = build_relation_to_ways(_mini_osm())
+    assert rel2ways == {901: [100, 101], 902: [102]}
+
+
+def test_assemble_groups_representative_first_resolvable():
+    rel2ways = {901: [100, 101], 902: [102]}
+    # way 100 is absent from CARLA; 101 acts as representative for 901.
+    states = {101: ("red", 0, "vehicle"), 102: ("green", 0, "vehicle")}
+    groups = assemble_groups(rel2ways, states)
+    by_id = dict(groups)
+    assert set(by_id) == {901, 902}
+    assert by_id[901] == [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)]
+    assert by_id[902] == [(COLOR_GREEN, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)]
+
+
+def test_assemble_groups_skips_unresolvable_relation():
+    groups = assemble_groups({901: [100]}, {})
+    assert groups == []
+
+
+def test_assemble_groups_way_id_mode():
+    states = {101: ("red", 0, "vehicle")}
+    groups = assemble_groups({901: [101]}, states, id_mode="way")
+    assert groups == [(101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
+
+
+def test_assemble_groups_way_id_mode_dedups_shared_way():
+    # One physical light referred by two regulatory elements -> one group.
+    states = {101: ("red", 0, "vehicle")}
+    groups = assemble_groups({901: [101], 903: [101]}, states, id_mode="way")
+    assert groups == [(101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]

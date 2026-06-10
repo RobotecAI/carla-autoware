@@ -58,3 +58,42 @@ def elements_for(main_state: str, arrow_mask: int,
             if arrow_mask & (1 << (8 * row + direction)):
                 elements.append((row_color, shape, STATUS_SOLID_ON, CONFIDENCE))
     return elements
+
+
+def build_relation_to_ways(osm_path: str) -> dict:
+    """{relation_id: [way_id, ...]} for traffic_light regulatory elements.
+
+    Reuses the lanelet2_traffic_light parser (sibling package on PYTHONPATH).
+    parse_osm may warn (warnings module) about malformed ways it skips;
+    watch stderr on startup when pointing at a new map.
+    """
+    from lanelet2_traffic_light.corelib.parser.lanelet2_parser import parse_osm
+    _, groups = parse_osm(osm_path)
+    return {g.relation_id: list(g.refers) for g in groups if g.refers}
+
+
+def assemble_groups(relation_to_ways: dict, states_by_way: dict,
+                    id_mode: str = "relation") -> list:
+    """[(group_id, elements), ...] from current CARLA states.
+
+    states_by_way: {way_id: (main_state, arrow_mask, signal_kind)}.
+    relation mode: the first way of a relation that has a CARLA state acts
+    as the representative (members of one relation show the same signal).
+    way mode: one group per way that has a state (AWSIM WayId parity).
+    """
+    groups = []
+    if id_mode == "way":
+        seen = set()
+        for relation_ways in relation_to_ways.values():
+            for way in relation_ways:
+                if way in states_by_way and way not in seen:
+                    seen.add(way)
+                    groups.append((way, elements_for(*states_by_way[way])))
+        return groups
+    for relation_id, relation_ways in relation_to_ways.items():
+        representative = next(
+            (w for w in relation_ways if w in states_by_way), None)
+        if representative is None:
+            continue
+        groups.append((relation_id, elements_for(*states_by_way[representative])))
+    return groups

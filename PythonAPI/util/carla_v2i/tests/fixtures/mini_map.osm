@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<osm version='0.6'>
+  <node id='1' lat='35.0' lon='139.0'><tag k='local_x' v='0.0'/><tag k='local_y' v='0.0'/></node>
+  <node id='2' lat='35.0' lon='139.0'><tag k='local_x' v='1.0'/><tag k='local_y' v='0.0'/></node>
+  <node id='3' lat='35.0' lon='139.0'><tag k='local_x' v='10.0'/><tag k='local_y' v='0.0'/></node>
+  <node id='4' lat='35.0' lon='139.0'><tag k='local_x' v='11.0'/><tag k='local_y' v='0.0'/></node>
+  <node id='5' lat='35.0' lon='139.0'><tag k='local_x' v='20.0'/><tag k='local_y' v='0.0'/></node>
+  <node id='6' lat='35.0' lon='139.0'><tag k='local_x' v='21.0'/><tag k='local_y' v='0.0'/></node>
+  <way id='100'><nd ref='1'/><nd ref='2'/>
+    <tag k='type' v='traffic_light'/><tag k='subtype' v='red_yellow_green'/><tag k='height' v='0.45'/></way>
+  <way id='101'><nd ref='3'/><nd ref='4'/>
+    <tag k='type' v='traffic_light'/><tag k='subtype' v='red_yellow_green'/><tag k='height' v='0.45'/></way>
+  <way id='102'><nd ref='5'/><nd ref='6'/>
+    <tag k='type' v='traffic_light'/><tag k='subtype' v='red_yellow_green'/><tag k='height' v='0.45'/></way>
+  <relation id='901'>
+    <member type='way' role='refers' ref='100'/>
+    <member type='way' role='refers' ref='101'/>
+    <tag k='type' v='regulatory_element'/><tag k='subtype' v='traffic_light'/>
+  </relation>
+  <relation id='902'>
+    <member type='way' role='refers' ref='102'/>
+    <tag k='type' v='regulatory_element'/><tag k='subtype' v='traffic_light'/>
+  </relation>
+</osm>
