@@ -7,6 +7,7 @@ from carla_v2i.conversion import (
     STATUS_SOLID_ON, STATUS_FLASHING, CONFIDENCE,
     elements_for,
     build_relation_to_ways, assemble_groups,
+    predict_states,
 )
 
 
@@ -100,3 +101,39 @@ def test_assemble_groups_way_id_mode_dedups_shared_way():
     states = {101: ("red", 0, "vehicle")}
     groups = assemble_groups({901: [101], 903: [101]}, states, id_mode="way")
     assert groups == [(101, [(COLOR_RED, SHAPE_CIRCLE, STATUS_SOLID_ON, CONFIDENCE)])]
+
+
+# --- predictions (Phase 2) ---
+
+
+def test_predict_states_walks_carla_cycle():
+    # CARLA cycle: green -> yellow -> red -> green. green=10 yellow=3 red=10.
+    # Now: green, elapsed 3s -> remaining 7s.
+    got = predict_states("green", elapsed=3.0, green_t=10.0, yellow_t=3.0,
+                         red_t=10.0, steps=3)
+    assert got == [(7.0, "yellow"), (10.0, "red"), (20.0, "green")]
+
+
+def test_predict_states_from_red():
+    got = predict_states("red", elapsed=9.0, green_t=10.0, yellow_t=3.0,
+                         red_t=10.0, steps=2)
+    assert got == [(1.0, "green"), (11.0, "yellow")]
+
+
+def test_predict_states_off_returns_empty():
+    assert predict_states("off", 0.0, 10.0, 3.0, 10.0, 6) == []
+
+
+def test_predict_states_steps_zero_returns_empty():
+    assert predict_states("green", 0.0, 10.0, 3.0, 10.0, 0) == []
+
+
+def test_predict_states_from_yellow():
+    # yellow elapsed=1s of 3s -> remaining 2s -> red, then green
+    got = predict_states("yellow", elapsed=1.0, green_t=10.0, yellow_t=3.0,
+                         red_t=10.0, steps=2)
+    assert got == [(2.0, "red"), (12.0, "green")]
+
+
+def test_predict_states_zero_duration_phase_returns_empty():
+    assert predict_states("green", 0.0, 10.0, 0.0, 10.0, 3) == []

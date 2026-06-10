@@ -97,3 +97,33 @@ def assemble_groups(relation_to_ways: dict, states_by_way: dict,
             continue
         groups.append((relation_id, elements_for(*states_by_way[representative])))
     return groups
+
+
+# CARLA autonomous cycle order (carla.TrafficLight state machine).
+_CYCLE_ORDER = ("green", "yellow", "red")
+
+
+def predict_states(main_state: str, elapsed: float, green_t: float,
+                   yellow_t: float, red_t: float, steps: int) -> list:
+    """[(seconds_from_now, next_state), ...] for a CARLA-cycled light.
+
+    Mirrors AWSIM development-private PredictFutureStates: walk the
+    deterministic cycle table forward from the current position. Returns []
+    when the light is not in the cycle (off/unknown) -- e.g. frozen lights
+    have no future plan and honestly report no predictions.
+    """
+    if main_state not in _CYCLE_ORDER:
+        return []
+    if any(d <= 0 for d in (green_t, yellow_t, red_t)):
+        # A zero-duration phase would emit duplicate same-time predictions;
+        # treat such lights as having no usable cycle plan.
+        return []
+    durations = {"green": green_t, "yellow": yellow_t, "red": red_t}
+    index = _CYCLE_ORDER.index(main_state)
+    out = []
+    offset = durations[main_state] - elapsed
+    for _ in range(steps):
+        index = (index + 1) % len(_CYCLE_ORDER)
+        out.append((offset, _CYCLE_ORDER[index]))
+        offset += durations[_CYCLE_ORDER[index]]
+    return out
