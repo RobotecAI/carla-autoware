@@ -32,6 +32,7 @@ from lanelet2_traffic_light.frontend_editor.arrow_lighting import (
 from lanelet2_traffic_light.frontend_editor.arrow_runtime import (
     capabilities_mask, initial_arrow_mask,
 )
+from lanelet2_traffic_light.frontend_editor.native_labels import is_signal_head_label
 
 
 # Default Group BP path prior to Phase 5-2 (no longer used;
@@ -231,9 +232,7 @@ def _collect_unused_meshes(used_labels: set,
         if not isinstance(a, unreal.StaticMeshActor):
             continue
         label = a.get_actor_label()
-        if "Pole" in label:
-            continue
-        if not any(label.startswith(p) for p in label_prefixes):
+        if not is_signal_head_label(label, label_prefixes):
             continue
         if label in used_labels:
             continue
@@ -262,7 +261,7 @@ def _collect_mesh_z_stats(label_prefixes=("Traffic_Lights", "Pedestrian_Lights")
         if not isinstance(a, unreal.StaticMeshActor):
             continue
         label = a.get_actor_label()
-        if "Pole" in label:
+        if not is_signal_head_label(label, label_prefixes):
             continue
         for p in label_prefixes:
             if label.startswith(p):
@@ -402,6 +401,8 @@ def _find_nearest_existing_signal_mesh(target: unreal.Vector,
         if not isinstance(a, unreal.StaticMeshActor):
             continue
         label = a.get_actor_label()
+        if not is_signal_head_label(label, label_prefixes):
+            continue
         matched_prefix = None
         for p in label_prefixes:
             if label.startswith(p):

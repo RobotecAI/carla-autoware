@@ -14,11 +14,15 @@ both placement and this cleanup work. Editor-only (depends on the `unreal` modul
 import unreal
 
 from lanelet2_traffic_light.frontend_editor.map_profile import get_map_profile
+from lanelet2_traffic_light.frontend_editor.native_labels import (
+    NON_HEAD_SUBSTRINGS, is_signal_head_label,
+)
 
 # Labels of the placed signal actors (map-independent; set by _label_prefix_for_subtype).
 SIGNAL_PREFIXES = ("TLV_", "TLP_")
-# Substrings of native labels that are never signal heads (e.g. road-surface markings).
-DEFAULT_EXCLUDE = ("Ground",)
+# Substrings of native labels that are never signal heads (e.g. pole/arm assemblies,
+# road-surface markings). Sourced from native_labels to stay in sync with snap targeting.
+DEFAULT_EXCLUDE = NON_HEAD_SUBSTRINGS
 # Snap places a signal exactly on its native mesh, so a tight XY radius matches only
 # that native (not neighbouring signals at the same intersection).
 DEFAULT_MATCH_RADIUS_CM = 80.0
@@ -57,8 +61,7 @@ def _open_map_native_prefixes():
 
 
 def _is_native(label, native_prefixes, exclude_substrings):
-    return label.startswith(native_prefixes) and not any(
-        x in label for x in exclude_substrings)
+    return is_signal_head_label(label, native_prefixes, exclude_substrings)
 
 
 def _placed_signal_xy(actors):
