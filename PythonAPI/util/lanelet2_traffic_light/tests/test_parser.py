@@ -138,9 +138,10 @@ def test_parse_arrow_bulbs_warns_on_unknown_direction(arrows_osm_path):
 
 def test_parse_arrow_bulbs_accepts_diagonal_directions(arrows_osm_path):
     bulbs = parse_arrow_bulbs(arrows_osm_path)
-    # 1003 has green up_left / down_right; 'down' is a reserved slot -> skipped.
+    # 1003 has green up_left / down_right / literal "straight" (new Odaiba map
+    # vocabulary, 2026-06 update); 'down' is a reserved slot -> skipped.
     assert bulbs[1003] == frozenset(
-        {("green", "up_left"), ("green", "down_right")}
+        {("green", "up_left"), ("green", "down_right"), ("green", "straight")}
     )
 
 

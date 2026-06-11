@@ -237,5 +237,5 @@ def test_generate_placements_populates_arrows():
     assert set(by_id[1001].arrows) == {("green", "right"), ("green", "straight")}
     # way 1002 has no arrow bulbs
     assert by_id[1002].arrows == ()
-    # way 1003 has diagonal arrows (up_left, down_right); 'down' is skipped
-    assert set(by_id[1003].arrows) == {("green", "up_left"), ("green", "down_right")}
+    # way 1003 has diagonal arrows (up_left, down_right) + literal "straight" (2026-06 new Odaiba map); 'down' is skipped
+    assert set(by_id[1003].arrows) == {("green", "up_left"), ("green", "down_right"), ("green", "straight")}
