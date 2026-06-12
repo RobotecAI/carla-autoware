@@ -3,8 +3,9 @@
 Emissive square wave driven by the material Time node -- the blink runs on
 the GPU with zero Tick/BP cost:
 
-    lamp_select = If(PreSkinnedLocalPosition.Y < YSplit, 0.0, 0.5)
-    on          = If(frac(Time/Period + Phase + lamp_select) < 0.5, 1, 0)
+    local_y     = TransformPosition(AbsoluteWorldPosition, World -> Local).Y
+    lamp_select = 0.5 * saturate((local_y - YSplit) * 1000)
+    on          = 1 - floor(frac(Time/Period + Phase + lamp_select) + 0.5)
     Emissive    = on * BeaconColor * Intensity
 
 The two lamps of one beacon mesh share a single Orange_Light element but sit
@@ -45,25 +46,6 @@ def _con(a, ao, b, bi):
         unreal.log_error("connect FAIL %s[%s]->%s[%s]"
                          % (a.get_class().get_name(), ao, b.get_class().get_name(), bi))
 
-
-# The If node exposes its comparison pins under display names ("A > B") in
-# some engine versions and property names ("AGreaterThanB") in others; try
-# all known spellings before reporting failure.
-_IF_PIN_ALIASES = {
-    "less": ("A < B", "ALessThanB"),
-    "greater": ("A > B", "AGreaterThanB"),
-    "equal": ("A == B", "AEqualsB"),
-}
-
-
-def _con_if(a, ao, if_node, pin_kind):
-    for name in _IF_PIN_ALIASES[pin_kind]:
-        if mel.connect_material_expressions(a, ao, if_node, name):
-            return
-    unreal.log_error("connect FAIL %s[%s]->If[%s] (all aliases)"
-                     % (a.get_class().get_name(), ao, pin_kind))
-
-
 def _scalar(mat, name, default, x, y):
     p = _expr(mat, unreal.MaterialExpressionScalarParameter, x, y)
     p.set_editor_property("parameter_name", name)
@@ -90,34 +72,65 @@ def build():
         mel.delete_all_material_expressions(mat)
     except Exception as e:
         unreal.log_warning("delete_all: %s" % e)
+    # delete_all proved unreliable while the material editor held the asset
+    # open (2026-06-12: four builds accumulated dangling nodes); sweep any
+    # survivors one by one.
+    try:
+        leftovers = list(mat.get_editor_property("expressions"))
+        for ex in leftovers:
+            mel.delete_material_expression(mat, ex)
+        if leftovers:
+            unreal.log("[beacon_material] swept %d leftover expressions"
+                       % len(leftovers))
+    except Exception as e:
+        unreal.log_warning("leftover sweep: %s" % e)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
 
     period = _scalar(mat, "Period", DEFAULT_PERIOD, -1200, 0)
     phase = _scalar(mat, "Phase", 0.0, -1200, 100)
     ysplit = _scalar(mat, "YSplit", 0.0, -1200, 300)
 
-    # lamp_select = If(LocalPos.Y < YSplit, 0.0, 0.5)
-    pre = _expr(mat, unreal.MaterialExpressionPreSkinnedPosition, -1200, 400)
+    # lamp_select = 0.5 * saturate((LocalPos.Y - YSplit) * 1000): branchless
+    # upper/lower mask. The lamps sit >= 6.8 cm from the split, so the steep
+    # saturate snaps to exactly 0 or 0.5 per lamp. If-node pins and the
+    # deprecated PreSkinnedPosition proved unreliable to wire from python
+    # (2026-06-12), hence math-only nodes and a World->Local transform.
+    wpos = _expr(mat, unreal.MaterialExpressionWorldPosition, -1350, 400)
+    tpos = _expr(mat, unreal.MaterialExpressionTransformPosition, -1200, 400)
+    # Enum class name differs across engine versions.
+    pos_enum = None
+    for enum_name in ("MaterialPositionTransformSource",
+                      "MaterialExpressionTransformPosSource"):
+        pos_enum = getattr(unreal, enum_name, None)
+        if pos_enum is not None:
+            break
+    if pos_enum is None:
+        unreal.log_error("build: transform-position enum class not found")
+        return
+    tpos.set_editor_property(
+        "transform_source_type", pos_enum.TRANSFORMPOSSOURCE_WORLD)
+    tpos.set_editor_property(
+        "transform_type", pos_enum.TRANSFORMPOSSOURCE_LOCAL)
+    _con(wpos, "", tpos, "")
     ymask = _expr(mat, unreal.MaterialExpressionComponentMask, -1050, 400)
     ymask.set_editor_property("r", False)
     ymask.set_editor_property("g", True)
     ymask.set_editor_property("b", False)
     ymask.set_editor_property("a", False)
-    _con(pre, "", ymask, "")
-    # Pre-skinned position exists only in the vertex shader; interpolate the
-    # masked Y down to the pixel shader. Lens triangles never span both lamps
-    # (13-17 cm gap between the discs), so the interpolated value is constant
-    # within each lamp and stays a clean mask.
-    interp = _expr(mat, unreal.MaterialExpressionVertexInterpolator, -975, 400)
-    _con(ymask, "", interp, "")
-    zero_a = _const(mat, 0.0, -1050, 500)
-    half_a = _const(mat, 0.5, -1050, 550)
-    lamp_select = _expr(mat, unreal.MaterialExpressionIf, -900, 400)
-    _con(interp, "", lamp_select, "A")
-    _con(ysplit, "", lamp_select, "B")
-    _con_if(zero_a, "", lamp_select, "less")
-    _con_if(half_a, "", lamp_select, "greater")
-    _con_if(half_a, "", lamp_select, "equal")
+    _con(tpos, "", ymask, "")
+    ydelta = _expr(mat, unreal.MaterialExpressionSubtract, -900, 400)
+    _con(ymask, "", ydelta, "A")
+    _con(ysplit, "", ydelta, "B")
+    steep = _const(mat, 1000.0, -900, 500)
+    ysteep = _expr(mat, unreal.MaterialExpressionMultiply, -800, 400)
+    _con(ydelta, "", ysteep, "A")
+    _con(steep, "", ysteep, "B")
+    ysat = _expr(mat, unreal.MaterialExpressionSaturate, -700, 400)
+    _con(ysteep, "", ysat, "")
+    half_a = _const(mat, 0.5, -700, 500)
+    lamp_select = _expr(mat, unreal.MaterialExpressionMultiply, -600, 400)
+    _con(ysat, "", lamp_select, "A")
+    _con(half_a, "", lamp_select, "B")
 
     # frac(Time/Period + Phase + lamp_select)
     t = _expr(mat, unreal.MaterialExpressionTime, -1050, 0)
@@ -133,16 +146,15 @@ def build():
     frac = _expr(mat, unreal.MaterialExpressionFrac, -450, 0)
     _con(add2, "", frac, "")
 
-    # on = If(frac < 0.5, 1, 0)
+    # on = 1 - floor(frac + 0.5): 1 while frac < 0.5, else 0 (branchless).
     half_b = _const(mat, 0.5, -450, 100)
-    one_b = _const(mat, 1.0, -450, 150)
-    zero_b = _const(mat, 0.0, -450, 200)
-    on = _expr(mat, unreal.MaterialExpressionIf, -300, 0)
-    _con(frac, "", on, "A")
-    _con(half_b, "", on, "B")
-    _con_if(one_b, "", on, "less")
-    _con_if(zero_b, "", on, "greater")
-    _con_if(zero_b, "", on, "equal")
+    shift = _expr(mat, unreal.MaterialExpressionAdd, -400, 0)
+    _con(frac, "", shift, "A")
+    _con(half_b, "", shift, "B")
+    fl = _expr(mat, unreal.MaterialExpressionFloor, -350, 0)
+    _con(shift, "", fl, "")
+    on = _expr(mat, unreal.MaterialExpressionOneMinus, -300, 0)
+    _con(fl, "", on, "")
 
     color = _expr(mat, unreal.MaterialExpressionVectorParameter, -300, 250)
     color.set_editor_property("parameter_name", "BeaconColor")
