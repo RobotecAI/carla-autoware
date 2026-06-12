@@ -104,6 +104,29 @@ Integration tests that require the actual Odaiba lanelet2 file
 (`/mnt/dsk0/wk0/CARLA/autoware_map/odaiba_autoware_map_2025_01_16/lanelet2_map.osm`)
 are automatically skipped in CI environments where the file is absent.
 
+## Flashing Beacons (Odaiba)
+
+The vertical two-lamp warning beacons (`Traffic_Lights_Ground_*`, 32 actors,
+not present in lanelet2) blink autonomously via a Time-node material
+(`M_JPFlashingBeaconLit`); no Tick and no traffic-light controller involved.
+The two lamps of one beacon share a single material slot and are separated by
+a local-Y mask whose `YSplit` boundary is baked into per-family material
+instances (`MI_JPFlashingBeacon_*`).
+
+`BP_FlashingBeaconManager` (one per level, found via actor tag
+`FlashingBeacon`) reads `-FlashingBeaconPeriod=<sec>` from the command line
+at BeginPlay (default 1.2 s full cycle; non-positive or non-numeric values
+fall back with a log line) and assigns a random per-beacon phase so
+neighbouring beacons blink out of sync.
+
+Scripts (editor Output Log, `py "<path>"`):
+
+- `frontend_editor/beacon_audit.py` -- read-only candidate report (per-axis
+  vertex/UV ranges and largest-gap split suggestions)
+- `frontend_editor/beacon_material_setup.py` -- (re)build the material
+- `frontend_editor/beacon_apply.py` -- assign per-family MICs, tag the
+  actors, and spawn the manager (save the level afterwards to persist)
+
 ## Known Limitations
 
 - Arrow signals are not supported (requires `light_bulbs` interpretation and `ETrafficLightState` extension).
