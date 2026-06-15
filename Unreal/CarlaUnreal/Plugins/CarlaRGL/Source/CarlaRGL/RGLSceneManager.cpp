@@ -161,12 +161,36 @@ void FRGLSceneManager::Update(UWorld* World, double SimulationTime)
         bInitialized = true;
     }
 
-    // Periodic full scan for new/removed actors (time-based)
+    // Track sim time for stale-sensor eviction (used inside SyncWorldComponents).
+    CurrentSimTime = (SimulationTime >= 0.0) ? SimulationTime : World->GetTimeSeconds();
+
+    // Sync on a time interval OR when any sensor has moved far enough that newly
+    // relevant geometry could be missed before the next periodic sync
+    // (Phase 1: high-speed safety).
     TimeSinceLastSync += World->GetDeltaSeconds();
-    if (TimeSinceLastSync >= SyncIntervalSeconds)
+    bool bShouldSync = (TimeSinceLastSync >= SyncIntervalSeconds);
+    if (!bShouldSync)
+    {
+        for (const auto& Pair : RegisteredSensors)
+        {
+            const FSensorRegistration& S = Pair.Value;
+            const float TriggerCm = 0.2f * S.RegistrationDistanceCm;
+            if (!S.bLastSyncValid || FVector::Dist(S.Position, S.LastSyncPosition) > TriggerCm)
+            {
+                bShouldSync = true;
+                break;
+            }
+        }
+    }
+    if (bShouldSync)
     {
         SyncWorldComponents(World);
         TimeSinceLastSync = 0.0f;
+        for (auto& Pair : RegisteredSensors)
+        {
+            Pair.Value.LastSyncPosition = Pair.Value.Position;
+            Pair.Value.bLastSyncValid = true;
+        }
     }
 
     // Update scene time for velocity computation and ROS2 timestamp synchronization.
@@ -187,9 +211,8 @@ void FRGLSceneManager::Update(UWorld* World, double SimulationTime)
 void FRGLSceneManager::InitializeFromWorld(UWorld* World)
 {
     RGLLog::Info("RGLSceneManager: Initializing from world...");
-    RGLLog::Info("RGLSceneManager: Static registration radius=",
-                 RegistrationDistanceCm * RGLCoord::UE_TO_RGL, "m",
-                 " sensorValid=", bSensorPositionValid ? "true" : "false");
+    RGLLog::Info("RGLSceneManager: Initializing with registered sensors=",
+                 RegisteredSensors.Num());
 
     int32 EntityCount = 0;
     int32 SkippedCount = 0;
@@ -923,36 +946,43 @@ void FRGLSceneManager::ReleaseMeshReference(UStaticMesh* StaticMesh, int32 Count
 // Entity management
 // ============================================================================
 
-bool FRGLSceneManager::IsComponentWithinDistance(UStaticMeshComponent* Component, float DistanceCm) const
+bool FRGLSceneManager::IsWithinAnySensor(const FVector& CenterCm, float BoundsRadiusCm, float ExtraCm) const
 {
-    if (!bSensorPositionValid || !IsValid(Component))
+    for (const auto& Pair : RegisteredSensors)
+    {
+        const FSensorRegistration& S = Pair.Value;
+        const float EffectiveDistanceCm = S.RegistrationDistanceCm + BoundsRadiusCm + ExtraCm;
+        if (FVector::DistSquared(CenterCm, S.Position) <= FMath::Square(EffectiveDistanceCm))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FRGLSceneManager::IsComponentWithinAnySensor(UStaticMeshComponent* Component, float ExtraCm) const
+{
+    if (!IsValid(Component))
     {
         return false;
     }
-
-    const float BoundsRadiusCm = Component->Bounds.SphereRadius;
-    const FVector BoundsCenter = Component->Bounds.Origin;
-    const float EffectiveDistanceCm = DistanceCm + BoundsRadiusCm;
-    return FVector::DistSquared(BoundsCenter, SensorPosition) <= FMath::Square(EffectiveDistanceCm);
+    return IsWithinAnySensor(Component->Bounds.Origin, Component->Bounds.SphereRadius, ExtraCm);
 }
 
-bool FRGLSceneManager::IsInstanceWithinDistance(
+bool FRGLSceneManager::IsInstanceWithinAnySensor(
     UInstancedStaticMeshComponent* Component,
     UStaticMesh* StaticMesh,
     const FTransform& InstanceTransform,
-    float DistanceCm) const
+    float ExtraCm) const
 {
-    if (!bSensorPositionValid || !IsValid(Component) || !StaticMesh)
+    if (!IsValid(Component) || !StaticMesh)
     {
         return false;
     }
-
     const FVector Scale = InstanceTransform.GetScale3D();
     const float MaxScale = FMath::Max(FMath::Max(FMath::Abs(Scale.X), FMath::Abs(Scale.Y)), FMath::Abs(Scale.Z));
     const float BoundsRadiusCm = StaticMesh->GetBounds().SphereRadius * MaxScale;
-    const float EffectiveDistanceCm = DistanceCm + BoundsRadiusCm;
-    return FVector::DistSquared(InstanceTransform.GetLocation(), SensorPosition) <=
-           FMath::Square(EffectiveDistanceCm);
+    return IsWithinAnySensor(InstanceTransform.GetLocation(), BoundsRadiusCm, ExtraCm);
 }
 
 bool FRGLSceneManager::ShouldRegisterComponent(UStaticMeshComponent* Component, bool& bOutOfRange) const
@@ -984,21 +1014,21 @@ bool FRGLSceneManager::ShouldRegisterComponent(UStaticMeshComponent* Component, 
         return false;
     }
 
-    // Movable actors are kept even if the sensor position has not been set yet.
+    // Movable actors are kept even if no sensor has registered yet.
     if (Component->Mobility != EComponentMobility::Static)
     {
         return true;
     }
 
     // Static geometry on large maps is large enough to exhaust OptiX if uploaded wholesale.
-    // Register only meshes whose bounds intersect the sensor-centered radius.
-    if (!bSensorPositionValid)
+    // Register only meshes whose bounds intersect the union of all sensor spheres.
+    if (RegisteredSensors.Num() == 0)
     {
         bOutOfRange = true;
         return false;
     }
 
-    if (!IsComponentWithinDistance(Component, RegistrationDistanceCm))
+    if (!IsComponentWithinAnySensor(Component, 0.0f))
     {
         bOutOfRange = true;
         return false;
@@ -1021,8 +1051,8 @@ bool FRGLSceneManager::ShouldKeepRegisteredComponent(UStaticMeshComponent* Compo
     }
 
     // Keep a wider unload radius than the load radius to prevent repeated
-    // destroy/recreate near the boundary while the ego vehicle moves.
-    return IsComponentWithinDistance(Component, RegistrationDistanceCm + UnregistrationHysteresisCm);
+    // destroy/recreate near the boundary while sensors move.
+    return IsComponentWithinAnySensor(Component, UnregistrationHysteresisCm);
 }
 
 bool FRGLSceneManager::RegisterComponent(UStaticMeshComponent* Component)
@@ -1171,7 +1201,7 @@ bool FRGLSceneManager::RegisterISMComponent(UInstancedStaticMeshComponent* Compo
         }
 
         if (Component->Mobility == EComponentMobility::Static &&
-            !IsInstanceWithinDistance(Component, StaticMesh, InstanceTransform, RegistrationDistanceCm))
+            !IsInstanceWithinAnySensor(Component, StaticMesh, InstanceTransform, 0.0f))
         {
             ++RangeSkippedCount;
             continue;
@@ -1297,6 +1327,23 @@ void FRGLSceneManager::UpdateTransforms()
 
 void FRGLSceneManager::SyncWorldComponents(UWorld* World)
 {
+    // Evict sensors that stopped refreshing (paused but not destroyed) so their
+    // surrounding geometry can be released and stop holding VRAM.
+    {
+        TArray<const void*> StaleSensors;
+        for (const auto& Pair : RegisteredSensors)
+        {
+            if (CurrentSimTime - Pair.Value.LastUpdateTime > SensorStaleTimeoutSeconds)
+            {
+                StaleSensors.Add(Pair.Key);
+            }
+        }
+        for (const void* Id : StaleSensors)
+        {
+            RegisteredSensors.Remove(Id);
+        }
+    }
+
     TSet<UStaticMeshComponent*> CurrentComponents;
     TSet<UInstancedStaticMeshComponent*> CurrentISMComponents;
     int32 AddedRegular = 0;
@@ -1388,13 +1435,13 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
 
     if (AddedRegular || AddedISM || RemovedRegular || RemovedISM)
     {
-        RGLLog::Info("RGLSceneManager: Dynamic sync active regular=", EntityMap.Num(),
+        RGLLog::Info("RGLSceneManager: Dynamic sync active sensors=", RegisteredSensors.Num(),
+                     " regular=", EntityMap.Num(),
                      " ISMC=", ISMCEntityMap.Num(),
                      " cachedMeshes=", MeshCache.Num(),
                      " added=", AddedRegular, "+", AddedISM,
                      " removed=", RemovedRegular, "+", RemovedISM,
-                     " range-skipped=", RangeSkipped,
-                     " radius(m)=", RegistrationDistanceCm * RGLCoord::UE_TO_RGL);
+                     " range-skipped=", RangeSkipped);
     }
 }
 

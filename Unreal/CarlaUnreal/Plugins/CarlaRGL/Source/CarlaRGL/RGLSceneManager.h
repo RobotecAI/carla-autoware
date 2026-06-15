@@ -58,21 +58,21 @@ public:
     /// Uses a UE5 line trace to detect actual ground level.
     void UpdateGroundPlane(UWorld* World, const FTransform& SensorTransform);
 
-    /// Set sensor position for distance culling. Call before Update().
-    void SetSensorPosition(const FVector& Position)
+    /// Register or refresh a sensor's culling sphere. Call each tick before Update().
+    /// SensorId must be stable for the sensor's lifetime (use the session handle).
+    /// Now = current simulation time (seconds), used for stale-sensor eviction.
+    void RegisterSensor(const void* SensorId, const FVector& Position, float DistanceCm, double Now)
     {
-        SensorPosition = Position;
-        bSensorPositionValid = true;
+        FSensorRegistration& S = RegisteredSensors.FindOrAdd(SensorId);
+        S.Position = Position;
+        S.RegistrationDistanceCm = FMath::Max(5000.0f, DistanceCm);
+        S.LastUpdateTime = Now;
     }
 
-    /// Set static mesh registration radius around the sensor (UE5 cm).
-    void SetRegistrationDistance(float DistanceCm)
+    /// Remove a sensor when its session is destroyed.
+    void UnregisterSensor(const void* SensorId)
     {
-        const float ClampedDistanceCm = FMath::Max(5000.0f, DistanceCm);
-        RegistrationDistanceCm = bRegistrationDistanceConfigured
-            ? FMath::Max(RegistrationDistanceCm, ClampedDistanceCm)
-            : ClampedDistanceCm;
-        bRegistrationDistanceConfigured = true;
+        RegisteredSensors.Remove(SensorId);
     }
 
     /// Set the world sync interval in simulation seconds. Default: 1.0s. Minimum: 0.1s.
@@ -104,13 +104,14 @@ private:
     /// Check whether an already registered component should stay in the active RGL scene.
     bool ShouldKeepRegisteredComponent(UStaticMeshComponent* Component) const;
 
-    /// Component/instance distance culling helpers.
-    bool IsComponentWithinDistance(UStaticMeshComponent* Component, float DistanceCm) const;
-    bool IsInstanceWithinDistance(
+    /// Union distance culling helpers (within ANY registered sensor's sphere).
+    bool IsWithinAnySensor(const FVector& CenterCm, float BoundsRadiusCm, float ExtraCm) const;
+    bool IsComponentWithinAnySensor(UStaticMeshComponent* Component, float ExtraCm) const;
+    bool IsInstanceWithinAnySensor(
         UInstancedStaticMeshComponent* Component,
         UStaticMesh* StaticMesh,
         const FTransform& InstanceTransform,
-        float DistanceCm) const;
+        float ExtraCm) const;
 
     /// Remove an RGL entity for a destroyed component.
     void UnregisterComponent(UStaticMeshComponent* Component);
@@ -175,16 +176,28 @@ private:
     /// Frame tracking — skip Update if already done this frame
     uint64 LastUpdateFrame = 0;
 
-    /// Sensor position for distance culling (UE5 cm)
-    FVector SensorPosition = FVector::ZeroVector;
-    bool bSensorPositionValid = false;
-
-    /// Static mesh registration radius around the sensor (UE5 cm).
-    float RegistrationDistanceCm = 30000.0f; // 300m default, expanded from LiDAR range by backend
-    bool bRegistrationDistanceConfigured = false;
+    /// Per-sensor culling registration. A static mesh is registered if it falls
+    /// within ANY active sensor's sphere (union), so spatially separated sensors
+    /// (multi-vehicle / roadside) are all served correctly by the single shared scene.
+    struct FSensorRegistration
+    {
+        FVector Position = FVector::ZeroVector;
+        float   RegistrationDistanceCm = 30000.0f; // per-sensor radius (UE5 cm)
+        FVector LastSyncPosition = FVector::ZeroVector;
+        bool    bLastSyncValid = false;
+        double  LastUpdateTime = 0.0;              // sim time of last RegisterSensor()
+    };
+    /// Key = sensor id (session handle). Pointer key uses pointer hashing.
+    TMap<const void*, FSensorRegistration> RegisteredSensors;
 
     /// Hysteresis for dynamic unloads to avoid add/remove churn around the boundary (UE5 cm).
     float UnregistrationHysteresisCm = 2000.0f; // 20m
+
+    /// Evict sensors that stopped ticking (paused but not destroyed) to free their VRAM.
+    float SensorStaleTimeoutSeconds = 5.0f;
+
+    /// Latest simulation time seen by Update(); used for stale-sensor eviction.
+    double CurrentSimTime = 0.0;
 
     /// Virtual ground plane (not tied to any UE5 component).
     rgl_mesh_t GroundMesh = nullptr;
