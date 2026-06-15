@@ -105,7 +105,6 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
 
     const FLidarDescription& Desc = Config.LidarDesc;
 
-    // Pre-initialize scene manager (triggers world scan)
     if (!World)
     {
         UE_LOG(LogTemp, Error, TEXT("RGLBackendImpl: No world available during session creation"));
@@ -113,8 +112,9 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
         return nullptr;
     }
 
+    // Do not scan the world here: sensor position is not available yet, and
+    // uploading every static mesh at once can exhaust OptiX GPU memory.
     FRGLSceneManager& SceneMgr = FRGLSceneManager::GetInstance(World);
-    SceneMgr.Update(World);
     rgl_scene_t Scene = SceneMgr.GetScene();
 
     // 1. UseRays node
@@ -719,6 +719,13 @@ FRGLTickResult FRGLBackendImpl::Tick(
     if (World)
     {
         FRGLSceneManager& SceneMgr = FRGLSceneManager::GetInstance(World);
+        const FLidarDescription& Desc = Session->Config.LidarDesc;
+        // Keep the static scene registration close to the actual LiDAR range.
+        // Large city maps contain thousands of static meshes; forcing a 300 m minimum
+        // can exhaust OptiX memory before the first scan.
+        const float RegistrationDistanceCm = FMath::Max(5000.0f, Desc.Range + 2000.0f);
+        SceneMgr.SetSensorPosition(SensorWorldTransform.GetLocation());
+        SceneMgr.SetRegistrationDistance(RegistrationDistanceCm);
         SceneMgr.Update(World, SimulationTime);
     }
 
