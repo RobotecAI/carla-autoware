@@ -1406,6 +1406,15 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
     TArray<UStaticMeshComponent*> ToRemove;
     for (auto& Pair : EntityMap)
     {
+        // A destroyed component leaves a dangling raw key in this non-UObject map
+        // (GC does not null it: e.g. LargeMap tile stream-out, actor destruction).
+        // Detect it via the weak pointer and remove without dereferencing the raw
+        // key through ShouldKeepRegisteredComponent. Mirrors UpdateTransforms's guard.
+        if (!Pair.Value.Component.IsValid())
+        {
+            ToRemove.Add(Pair.Key);
+            continue;
+        }
         if (!CurrentComponents.Contains(Pair.Key) && !ShouldKeepRegisteredComponent(Pair.Key))
         {
             ToRemove.Add(Pair.Key);
@@ -1422,6 +1431,12 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
     TArray<UInstancedStaticMeshComponent*> ISMCToRemove;
     for (auto& Pair : ISMCEntityMap)
     {
+        // Same dangling-raw-key guard as the regular-entity loop above.
+        if (!Pair.Value.Component.IsValid())
+        {
+            ISMCToRemove.Add(Pair.Key);
+            continue;
+        }
         if (!CurrentISMComponents.Contains(Pair.Key) && !ShouldKeepRegisteredComponent(Pair.Key))
         {
             ISMCToRemove.Add(Pair.Key);
