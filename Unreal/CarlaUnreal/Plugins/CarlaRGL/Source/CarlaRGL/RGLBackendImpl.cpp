@@ -413,6 +413,13 @@ void FRGLBackendImpl::DestroySession(FRGLSessionHandle Handle)
 
     FRGLSession* Session = static_cast<FRGLSession*>(Handle);
 
+    // Remove this sensor from distance-culling registration so its surrounding
+    // geometry can be released. World may already be gone (instance auto-cleaned).
+    if (UWorld* World = Session->World.Get())
+    {
+        FRGLSceneManager::GetInstance(World).UnregisterSensor(static_cast<const void*>(Session));
+    }
+
     // Destroy the entire connected graph via the root node.
     // rgl_graph_destroy destroys all connected nodes in the graph.
     if (Session->UseRaysNode)
@@ -724,8 +731,13 @@ FRGLTickResult FRGLBackendImpl::Tick(
         // Large city maps contain thousands of static meshes; forcing a 300 m minimum
         // can exhaust OptiX memory before the first scan.
         const float RegistrationDistanceCm = FMath::Max(5000.0f, Desc.Range + 2000.0f);
-        SceneMgr.SetSensorPosition(SensorWorldTransform.GetLocation());
-        SceneMgr.SetRegistrationDistance(RegistrationDistanceCm);
+        // SensorId = session handle (stable for the sensor's lifetime). Per-sensor
+        // registration lets spatially separated sensors share one scene via union.
+        SceneMgr.RegisterSensor(
+            static_cast<const void*>(Session),
+            SensorWorldTransform.GetLocation(),
+            RegistrationDistanceCm,
+            SimulationTime);
         SceneMgr.Update(World, SimulationTime);
     }
 
