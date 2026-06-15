@@ -21,6 +21,7 @@ MAP="${MAP:-Town10HD_Opt}"
 PORT="${PORT:-2000}"
 DURATION="${DURATION:-25}"        # seconds each config runs before SIGINT
 SEP="${SEP:-150}"                 # meters between the 2 separated sensors (config c)
+NOCULL_RANGE="${NOCULL_RANGE:-5000}"  # LiDAR range (m) for the no-culling baseline (covers whole map)
 RESET_WAIT="${RESET_WAIT:-9}"     # > SensorStaleTimeoutSeconds(5s): let registry clear
 SERVER_EXTRA="${SERVER_EXTRA:--RenderOffScreen -nosound -quality-level=Low}"
 LOG="${LOG:-/tmp/carla_server_$$.log}"
@@ -83,7 +84,7 @@ run_config() {  # $1=name  rest=demo args
     log "--- config '$name': reset + demo $* (${DURATION}s) ---"
     reset_world
     local before; before=$(( $(wc -l < "$LOG") + 1 ))
-    timeout --signal=INT "$DURATION" python3 "$DEMO" --carla_lidar_type rgl "$@" \
+    env ${DEMO_ENV:-} timeout --signal=INT "$DURATION" python3 "$DEMO" --carla_lidar_type rgl "$@" \
         > "/tmp/demo_${name}.log" 2>&1 || true
     sleep 3
     VRAM[$name]=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
@@ -96,21 +97,39 @@ run_config() {  # $1=name  rest=demo args
 }
 
 # ---- 3. run configs ----
+# no-cull baseline: 1 sensor with a huge range -> registration sphere covers the
+# whole map -> every static mesh registered (= what we'd get without culling).
+DEMO_ENV="RGL_NOCULL_RANGE_M=$NOCULL_RANGE" run_config d_nocull --num_lidars 1
 run_config a_single    --num_lidars 1
 run_config b_cluster   --num_lidars 4 --lidar_spawn_delta_x 2 --lidar_spawn_delta_y 2
 run_config c_separated --num_lidars 2 --lidar_spawn_delta_x "$SEP"
 
 # ---- 4. verdict ----
+nc=${CACHED[d_nocull]:-0}; ncv=${VRAM[d_nocull]:-0}
+a=${CACHED[a_single]:-0};  av=${VRAM[a_single]:-0}
+c=${CACHED[c_separated]:-0}
+sa=${SENSORS[a_single]:-0}; sc=${SENSORS[c_separated]:-0}
+pct=$(awk "BEGIN{ if ($nc+0>0) printf \"%.0f\", 100*$a/$nc; else print 0 }")
+saved_m=$(( nc - a )); saved_v=$(( ncv - av ))
+
 log "============================================================"
-log "RESULT SUMMARY  (map=$MAP, sep=${SEP}m)"
+log "RESULT SUMMARY  (map=$MAP, sep=${SEP}m, nocull-range=${NOCULL_RANGE}m)"
+log "  (d) NO-CULL   : maxSensors=${SENSORS[d_nocull]:-?}  maxCachedMeshes=${CACHED[d_nocull]:-?}  VRAM=${VRAM[d_nocull]:-?}MiB  (whole map registered)"
 log "  (a) single    : maxSensors=${SENSORS[a_single]:-?}  maxCachedMeshes=${CACHED[a_single]:-?}  VRAM=${VRAM[a_single]:-?}MiB"
 log "  (b) cluster x4: maxSensors=${SENSORS[b_cluster]:-?}  maxCachedMeshes=${CACHED[b_cluster]:-?}  VRAM=${VRAM[b_cluster]:-?}MiB"
 log "  (c) separated : maxSensors=${SENSORS[c_separated]:-?}  maxCachedMeshes=${CACHED[c_separated]:-?}  VRAM=${VRAM[c_separated]:-?}MiB"
 log "------------------------------------------------------------"
+log "CULLING BENEFIT (registered mesh count = the RGL/OptiX VRAM driver):"
+log "  meshes : no-cull=$nc (whole map)  culled single=$a   -> culled keeps ${pct}%, ${saved_m} fewer meshes"
+log "  VRAM (total GPU, informational only): no-cull=${ncv}MiB single=${av}MiB cluster=${VRAM[b_cluster]:-?}MiB sep=${VRAM[c_separated]:-?}MiB"
+log "  note: nvidia-smi reports TOTAL GPU memory (engine+render dominated, ~GB) so the"
+log "        mesh-registration delta is below the noise floor on a small map. The GB-scale"
+log "        VRAM saving appears on large maps where no-cull exhausts OptiX memory;"
+log "        registered mesh count is the reliable proxy (mesh data dominates OptiX VRAM)."
+log "------------------------------------------------------------"
 verdict=0
-a=${CACHED[a_single]:-0}; c=${CACHED[c_separated]:-0}
-sa=${SENSORS[a_single]:-0}; sc=${SENSORS[c_separated]:-0}
 [ "${a:-0}" -gt 0 ] || { log "FAIL: (a) produced no cachedMeshes reading"; verdict=1; }
+if [ "${nc:-0}" -gt "${a:-0}" ]; then log "PASS: culling reduces registered meshes (no-cull=$nc > culled single=$a)"; else log "FAIL: expected no-cull($nc) > culled single($a) — map may fit fully within cull radius (try a larger map)"; verdict=1; fi
 if [ "${sc:-0}" -gt "${sa:-0}" ]; then log "PASS: more sensors registered when separated (c=$sc > a=$sa)"; else log "FAIL: expected sensors(c) > sensors(a), got c=$sc a=$sa"; verdict=1; fi
 if [ "${c:-0}" -gt "${a:-0}" ]; then log "PASS: union registers more geometry for separated sensors (c=$c > a=$a)"; else log "FAIL: expected cachedMeshes(c) > cachedMeshes(a), got c=$c a=$a — if c≈a, increase SEP and re-run"; verdict=1; fi
 [ "$verdict" = 0 ] && log "OVERALL: PASS" || log "OVERALL: FAIL (full server log: $LOG)"
