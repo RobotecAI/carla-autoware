@@ -1312,7 +1312,7 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     {
       return RespondError(
           "set_actor_constant_acceleration_jerk_limit",
-          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          ECarlaServerResponse::FunctionNotAvailableWhenDormant,
           " Actor Id: " + FString::FromInt(ActorId));
     }
 
@@ -1345,7 +1345,7 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     {
       return RespondError(
           "set_actor_constant_acceleration_first_order_lag_tau",
-          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          ECarlaServerResponse::FunctionNotAvailableWhenDormant,
           " Actor Id: " + FString::FromInt(ActorId));
     }
 
@@ -2210,7 +2210,7 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     {
       return RespondError(
           "set_vehicle_steer_rate_limit",
-          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          ECarlaServerResponse::FunctionNotAvailableWhenDormant,
           " Actor Id: " + FString::FromInt(ActorId));
     }
 
@@ -2243,7 +2243,7 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     {
       return RespondError(
           "set_vehicle_steer_first_order_lag_tau",
-          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          ECarlaServerResponse::FunctionNotAvailableWhenDormant,
           " Actor Id: " + FString::FromInt(ActorId));
     }
 
