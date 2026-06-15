@@ -105,7 +105,6 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
 
     const FLidarDescription& Desc = Config.LidarDesc;
 
-    // Pre-initialize scene manager (triggers world scan)
     if (!World)
     {
         UE_LOG(LogTemp, Error, TEXT("RGLBackendImpl: No world available during session creation"));
@@ -113,8 +112,9 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
         return nullptr;
     }
 
+    // Do not scan the world here: sensor position is not available yet, and
+    // uploading every static mesh at once can exhaust OptiX GPU memory.
     FRGLSceneManager& SceneMgr = FRGLSceneManager::GetInstance(World);
-    SceneMgr.Update(World);
     rgl_scene_t Scene = SceneMgr.GetScene();
 
     // 1. UseRays node
@@ -412,6 +412,13 @@ void FRGLBackendImpl::DestroySession(FRGLSessionHandle Handle)
     }
 
     FRGLSession* Session = static_cast<FRGLSession*>(Handle);
+
+    // Remove this sensor from distance-culling registration so its surrounding
+    // geometry can be released. World may already be gone (instance auto-cleaned).
+    if (UWorld* World = Session->World.Get())
+    {
+        FRGLSceneManager::GetInstance(World).UnregisterSensor(static_cast<const void*>(Session));
+    }
 
     // Destroy the entire connected graph via the root node.
     // rgl_graph_destroy destroys all connected nodes in the graph.
@@ -719,6 +726,18 @@ FRGLTickResult FRGLBackendImpl::Tick(
     if (World)
     {
         FRGLSceneManager& SceneMgr = FRGLSceneManager::GetInstance(World);
+        const FLidarDescription& Desc = Session->Config.LidarDesc;
+        // Keep the static scene registration close to the actual LiDAR range.
+        // Large city maps contain thousands of static meshes; forcing a 300 m minimum
+        // can exhaust OptiX memory before the first scan.
+        const float RegistrationDistanceCm = FMath::Max(5000.0f, Desc.Range + 2000.0f);
+        // SensorId = session handle (stable for the sensor's lifetime). Per-sensor
+        // registration lets spatially separated sensors share one scene via union.
+        SceneMgr.RegisterSensor(
+            static_cast<const void*>(Session),
+            SensorWorldTransform.GetLocation(),
+            RegistrationDistanceCm,
+            SimulationTime);
         SceneMgr.Update(World, SimulationTime);
     }
 

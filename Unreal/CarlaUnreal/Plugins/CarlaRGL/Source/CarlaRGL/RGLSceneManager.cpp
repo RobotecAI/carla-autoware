@@ -94,6 +94,7 @@ FRGLSceneManager::~FRGLSceneManager()
         }
     }
     MeshCache.Empty();
+    MeshRefCounts.Empty();
 }
 
 FRGLSceneManager& FRGLSceneManager::GetInstance(UWorld* World)
@@ -160,12 +161,36 @@ void FRGLSceneManager::Update(UWorld* World, double SimulationTime)
         bInitialized = true;
     }
 
-    // Periodic full scan for new/removed actors (time-based)
+    // Track sim time for stale-sensor eviction (used inside SyncWorldComponents).
+    CurrentSimTime = (SimulationTime >= 0.0) ? SimulationTime : World->GetTimeSeconds();
+
+    // Sync on a time interval OR when any sensor has moved far enough that newly
+    // relevant geometry could be missed before the next periodic sync
+    // (Phase 1: high-speed safety).
     TimeSinceLastSync += World->GetDeltaSeconds();
-    if (TimeSinceLastSync >= SyncIntervalSeconds)
+    bool bShouldSync = (TimeSinceLastSync >= SyncIntervalSeconds);
+    if (!bShouldSync)
+    {
+        for (const auto& Pair : RegisteredSensors)
+        {
+            const FSensorRegistration& S = Pair.Value;
+            const float TriggerCm = 0.2f * S.RegistrationDistanceCm;
+            if (!S.bLastSyncValid || FVector::Dist(S.Position, S.LastSyncPosition) > TriggerCm)
+            {
+                bShouldSync = true;
+                break;
+            }
+        }
+    }
+    if (bShouldSync)
     {
         SyncWorldComponents(World);
         TimeSinceLastSync = 0.0f;
+        for (auto& Pair : RegisteredSensors)
+        {
+            Pair.Value.LastSyncPosition = Pair.Value.Position;
+            Pair.Value.bLastSyncValid = true;
+        }
     }
 
     // Update scene time for velocity computation and ROS2 timestamp synchronization.
@@ -186,9 +211,12 @@ void FRGLSceneManager::Update(UWorld* World, double SimulationTime)
 void FRGLSceneManager::InitializeFromWorld(UWorld* World)
 {
     RGLLog::Info("RGLSceneManager: Initializing from world...");
+    RGLLog::Info("RGLSceneManager: Initializing with registered sensors=",
+                 RegisteredSensors.Num());
 
     int32 EntityCount = 0;
     int32 SkippedCount = 0;
+    int32 RangeSkippedCount = 0;
     int32 ActorCount = 0;
     int32 CompCount = 0;
 
@@ -266,16 +294,18 @@ void FRGLSceneManager::InitializeFromWorld(UWorld* World)
 
         for (UStaticMeshComponent* Comp : Components)
         {
-            if (!IsValid(Comp) || !Comp->GetStaticMesh())
+            if (IsValid(Comp) && Comp->GetStaticMesh())
             {
-                continue;
+                ++CompCount;
             }
 
-            ++CompCount;
-
-            // Skip invisible components
-            if (!Comp->IsVisible())
+            bool bOutOfRange = false;
+            if (!ShouldRegisterComponent(Comp, bOutOfRange))
             {
+                if (bOutOfRange)
+                {
+                    ++RangeSkippedCount;
+                }
                 continue;
             }
 
@@ -293,7 +323,8 @@ void FRGLSceneManager::InitializeFromWorld(UWorld* World)
     const int32 MeshCount = MeshCache.Num();
     RGLLog::Info("RGLSceneManager: Scanned", ActorCount, "actors,", CompCount,
                  "mesh components. Uploaded", MeshCount, "unique meshes, created",
-                 EntityCount, "entities (skipped", SkippedCount, ")");
+                 EntityCount, "entities (skipped", SkippedCount,
+                 ", range-skipped", RangeSkippedCount, ")");
 
     const int32 ISMCCompCount = ISMCEntityMap.Num();
     int32 ISMCEntityTotal = 0;
@@ -871,9 +902,158 @@ rgl_mesh_t FRGLSceneManager::UploadMesh(UStaticMesh* StaticMesh)
     return RGLMesh;
 }
 
+void FRGLSceneManager::AddMeshReference(UStaticMesh* StaticMesh, int32 Count)
+{
+    if (!StaticMesh || Count <= 0)
+    {
+        return;
+    }
+
+    int32& RefCount = MeshRefCounts.FindOrAdd(StaticMesh);
+    RefCount += Count;
+}
+
+void FRGLSceneManager::ReleaseMeshReference(UStaticMesh* StaticMesh, int32 Count)
+{
+    if (!StaticMesh || Count <= 0)
+    {
+        return;
+    }
+
+    int32* RefCount = MeshRefCounts.Find(StaticMesh);
+    if (!RefCount)
+    {
+        return;
+    }
+
+    *RefCount -= Count;
+    if (*RefCount > 0)
+    {
+        return;
+    }
+
+    MeshRefCounts.Remove(StaticMesh);
+
+    rgl_mesh_t* RGLMesh = MeshCache.Find(StaticMesh);
+    if (RGLMesh && *RGLMesh)
+    {
+        rgl_mesh_destroy(*RGLMesh);
+    }
+    MeshCache.Remove(StaticMesh);
+}
+
 // ============================================================================
 // Entity management
 // ============================================================================
+
+bool FRGLSceneManager::IsWithinAnySensor(const FVector& CenterCm, float BoundsRadiusCm, float ExtraCm) const
+{
+    for (const auto& Pair : RegisteredSensors)
+    {
+        const FSensorRegistration& S = Pair.Value;
+        const float EffectiveDistanceCm = S.RegistrationDistanceCm + BoundsRadiusCm + ExtraCm;
+        if (FVector::DistSquared(CenterCm, S.Position) <= FMath::Square(EffectiveDistanceCm))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FRGLSceneManager::IsComponentWithinAnySensor(UStaticMeshComponent* Component, float ExtraCm) const
+{
+    if (!IsValid(Component))
+    {
+        return false;
+    }
+    return IsWithinAnySensor(Component->Bounds.Origin, Component->Bounds.SphereRadius, ExtraCm);
+}
+
+bool FRGLSceneManager::IsInstanceWithinAnySensor(
+    UInstancedStaticMeshComponent* Component,
+    UStaticMesh* StaticMesh,
+    const FTransform& InstanceTransform,
+    float ExtraCm) const
+{
+    if (!IsValid(Component) || !StaticMesh)
+    {
+        return false;
+    }
+    const FVector Scale = InstanceTransform.GetScale3D();
+    const float MaxScale = FMath::Max(FMath::Max(FMath::Abs(Scale.X), FMath::Abs(Scale.Y)), FMath::Abs(Scale.Z));
+    const float BoundsRadiusCm = StaticMesh->GetBounds().SphereRadius * MaxScale;
+    return IsWithinAnySensor(InstanceTransform.GetLocation(), BoundsRadiusCm, ExtraCm);
+}
+
+bool FRGLSceneManager::ShouldRegisterComponent(UStaticMeshComponent* Component, bool& bOutOfRange) const
+{
+    bOutOfRange = false;
+
+    if (!IsValid(Component) || !Component->GetStaticMesh() || !Component->IsVisible())
+    {
+        return false;
+    }
+
+    const FTransform WorldTransform = Component->GetComponentTransform();
+    const FVector Scale = WorldTransform.GetScale3D();
+    if (FMath::IsNearlyZero(Scale.X) || FMath::IsNearlyZero(Scale.Y) || FMath::IsNearlyZero(Scale.Z))
+    {
+        return false;
+    }
+
+    AActor* Owner = Component->GetOwner();
+    const FString OwnerName = Owner ? Owner->GetName() : FString();
+    const FString ComponentName = Component->GetName();
+    const FString MeshName = Component->GetStaticMesh()->GetName();
+
+    // Sky domes are valid static meshes but should never participate in LiDAR ray tracing.
+    if (OwnerName.Contains(TEXT("Sky"), ESearchCase::IgnoreCase) ||
+        ComponentName.Contains(TEXT("Sky"), ESearchCase::IgnoreCase) ||
+        MeshName.Contains(TEXT("Sky"), ESearchCase::IgnoreCase))
+    {
+        return false;
+    }
+
+    // Movable actors are kept even if no sensor has registered yet.
+    if (Component->Mobility != EComponentMobility::Static)
+    {
+        return true;
+    }
+
+    // Static geometry on large maps is large enough to exhaust OptiX if uploaded wholesale.
+    // Register only meshes whose bounds intersect the union of all sensor spheres.
+    if (RegisteredSensors.Num() == 0)
+    {
+        bOutOfRange = true;
+        return false;
+    }
+
+    if (!IsComponentWithinAnySensor(Component, 0.0f))
+    {
+        bOutOfRange = true;
+        return false;
+    }
+
+    return true;
+}
+
+bool FRGLSceneManager::ShouldKeepRegisteredComponent(UStaticMeshComponent* Component) const
+{
+    bool bOutOfRange = false;
+    if (ShouldRegisterComponent(Component, bOutOfRange))
+    {
+        return true;
+    }
+
+    if (!bOutOfRange || !IsValid(Component))
+    {
+        return false;
+    }
+
+    // Keep a wider unload radius than the load radius to prevent repeated
+    // destroy/recreate near the boundary while sensors move.
+    return IsComponentWithinAnySensor(Component, UnregistrationHysteresisCm);
+}
 
 bool FRGLSceneManager::RegisterComponent(UStaticMeshComponent* Component)
 {
@@ -903,11 +1083,13 @@ bool FRGLSceneManager::RegisterComponent(UStaticMeshComponent* Component)
     {
         return false;
     }
+    AddMeshReference(StaticMesh);
 
     rgl_entity_t Entity = nullptr;
     rgl_status_t Status = rgl_entity_create(&Entity, Scene, RGLMesh);
     if (Status != RGL_SUCCESS || !Entity)
     {
+        ReleaseMeshReference(StaticMesh);
         const char* ErrMsg = nullptr;
         rgl_get_last_error_string(&ErrMsg);
         UE_LOG(LogCarlaRGL, Warning,
@@ -942,6 +1124,7 @@ bool FRGLSceneManager::RegisterComponent(UStaticMeshComponent* Component)
     FEntityInfo Info;
     Info.Entity = Entity;
     Info.Component = Component;
+    Info.StaticMesh = StaticMesh;
     Info.bIsStatic = (Component->Mobility == EComponentMobility::Static);
     Info.bTransformInitialized = true;
     Info.LastTransform = WorldTransform;
@@ -963,6 +1146,7 @@ void FRGLSceneManager::UnregisterComponent(UStaticMeshComponent* Component)
         rgl_entity_destroy(Info->Entity);
         Info->Entity = nullptr;
     }
+    ReleaseMeshReference(Info->StaticMesh);
     EntityMap.Remove(Component);
 }
 
@@ -984,19 +1168,23 @@ bool FRGLSceneManager::RegisterISMComponent(UInstancedStaticMeshComponent* Compo
     {
         return false;
     }
+    AddMeshReference(StaticMesh); // Temporary reference until at least one entity owns the mesh.
 
     const int32 NumInstances = Component->GetInstanceCount();
     if (NumInstances <= 0)
     {
+        ReleaseMeshReference(StaticMesh);
         return false;
     }
 
     FISMCEntityGroup Group;
     Group.Component = Component;
+    Group.StaticMesh = StaticMesh;
     Group.OriginalInstanceCount = NumInstances;
     Group.Entities.Reserve(NumInstances);
 
     int32 SuccessCount = 0;
+    int32 RangeSkippedCount = 0;
     for (int32 i = 0; i < NumInstances; ++i)
     {
         FTransform InstanceTransform;
@@ -1009,6 +1197,13 @@ bool FRGLSceneManager::RegisterISMComponent(UInstancedStaticMeshComponent* Compo
         const FVector Scale = InstanceTransform.GetScale3D();
         if (FMath::IsNearlyZero(Scale.X) || FMath::IsNearlyZero(Scale.Y) || FMath::IsNearlyZero(Scale.Z))
         {
+            continue;
+        }
+
+        if (Component->Mobility == EComponentMobility::Static &&
+            !IsInstanceWithinAnySensor(Component, StaticMesh, InstanceTransform, 0.0f))
+        {
+            ++RangeSkippedCount;
             continue;
         }
 
@@ -1028,15 +1223,20 @@ bool FRGLSceneManager::RegisterISMComponent(UInstancedStaticMeshComponent* Compo
 
     if (SuccessCount == 0)
     {
+        ReleaseMeshReference(StaticMesh);
         return false;
     }
 
+    Group.MeshRefCount = SuccessCount;
     ISMCEntityMap.Add(Component, MoveTemp(Group));
+    AddMeshReference(StaticMesh, SuccessCount);
+    ReleaseMeshReference(StaticMesh); // Drop the temporary upload reference.
 
     RGLLog::Info("RGLSceneManager: Registered ISMC '",
                  TCHAR_TO_UTF8(*Component->GetName()),
                  "' instances=", NumInstances,
                  " entities=", SuccessCount,
+                 " range-skipped=", RangeSkippedCount,
                  " mesh='", TCHAR_TO_UTF8(*StaticMesh->GetName()), "'");
 
     return true;
@@ -1057,6 +1257,7 @@ void FRGLSceneManager::UnregisterISMComponent(UInstancedStaticMeshComponent* Com
             rgl_entity_destroy(Entity);
         }
     }
+    ReleaseMeshReference(Group->StaticMesh, Group->MeshRefCount);
     ISMCEntityMap.Remove(Component);
 }
 
@@ -1126,8 +1327,30 @@ void FRGLSceneManager::UpdateTransforms()
 
 void FRGLSceneManager::SyncWorldComponents(UWorld* World)
 {
+    // Evict sensors that stopped refreshing (paused but not destroyed) so their
+    // surrounding geometry can be released and stop holding VRAM.
+    {
+        TArray<const void*> StaleSensors;
+        for (const auto& Pair : RegisteredSensors)
+        {
+            if (CurrentSimTime - Pair.Value.LastUpdateTime > SensorStaleTimeoutSeconds)
+            {
+                StaleSensors.Add(Pair.Key);
+            }
+        }
+        for (const void* Id : StaleSensors)
+        {
+            RegisteredSensors.Remove(Id);
+        }
+    }
+
     TSet<UStaticMeshComponent*> CurrentComponents;
     TSet<UInstancedStaticMeshComponent*> CurrentISMComponents;
+    int32 AddedRegular = 0;
+    int32 AddedISM = 0;
+    int32 RemovedRegular = 0;
+    int32 RemovedISM = 0;
+    int32 RangeSkipped = 0;
 
     for (TActorIterator<AActor> It(World); It; ++It)
     {
@@ -1142,8 +1365,13 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
 
         for (UStaticMeshComponent* Comp : Components)
         {
-            if (!IsValid(Comp) || !Comp->GetStaticMesh() || !Comp->IsVisible())
+            bool bOutOfRange = false;
+            if (!ShouldRegisterComponent(Comp, bOutOfRange))
             {
+                if (bOutOfRange)
+                {
+                    ++RangeSkipped;
+                }
                 continue;
             }
 
@@ -1153,7 +1381,10 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
                 CurrentISMComponents.Add(ISMComp);
                 if (!ISMCEntityMap.Contains(ISMComp))
                 {
-                    RegisterISMComponent(ISMComp);
+                    if (RegisterISMComponent(ISMComp))
+                    {
+                        ++AddedISM;
+                    }
                 }
             }
             else
@@ -1161,17 +1392,30 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
                 CurrentComponents.Add(Comp);
                 if (!EntityMap.Contains(Comp))
                 {
-                    RegisterComponent(Comp);
+                    if (RegisterComponent(Comp))
+                    {
+                        ++AddedRegular;
+                    }
                 }
             }
         }
     }
 
-    // Remove regular entities for components that no longer exist
+    // Remove regular entities for components that no longer exist or moved out
+    // of the LiDAR-relevant window.
     TArray<UStaticMeshComponent*> ToRemove;
     for (auto& Pair : EntityMap)
     {
-        if (!CurrentComponents.Contains(Pair.Key))
+        // A destroyed component leaves a dangling raw key in this non-UObject map
+        // (GC does not null it: e.g. LargeMap tile stream-out, actor destruction).
+        // Detect it via the weak pointer and remove without dereferencing the raw
+        // key through ShouldKeepRegisteredComponent. Mirrors UpdateTransforms's guard.
+        if (!Pair.Value.Component.IsValid())
+        {
+            ToRemove.Add(Pair.Key);
+            continue;
+        }
+        if (!CurrentComponents.Contains(Pair.Key) && !ShouldKeepRegisteredComponent(Pair.Key))
         {
             ToRemove.Add(Pair.Key);
         }
@@ -1179,13 +1423,21 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
     for (UStaticMeshComponent* Comp : ToRemove)
     {
         UnregisterComponent(Comp);
+        ++RemovedRegular;
     }
 
-    // Remove ISMC entities for components that no longer exist
+    // Remove ISMC entities for components that no longer exist or moved out
+    // of the LiDAR-relevant window.
     TArray<UInstancedStaticMeshComponent*> ISMCToRemove;
     for (auto& Pair : ISMCEntityMap)
     {
-        if (!CurrentISMComponents.Contains(Pair.Key))
+        // Same dangling-raw-key guard as the regular-entity loop above.
+        if (!Pair.Value.Component.IsValid())
+        {
+            ISMCToRemove.Add(Pair.Key);
+            continue;
+        }
+        if (!CurrentISMComponents.Contains(Pair.Key) && !ShouldKeepRegisteredComponent(Pair.Key))
         {
             ISMCToRemove.Add(Pair.Key);
         }
@@ -1193,6 +1445,18 @@ void FRGLSceneManager::SyncWorldComponents(UWorld* World)
     for (UInstancedStaticMeshComponent* Comp : ISMCToRemove)
     {
         UnregisterISMComponent(Comp);
+        ++RemovedISM;
+    }
+
+    if (AddedRegular || AddedISM || RemovedRegular || RemovedISM)
+    {
+        RGLLog::Info("RGLSceneManager: Dynamic sync active sensors=", RegisteredSensors.Num(),
+                     " regular=", EntityMap.Num(),
+                     " ISMC=", ISMCEntityMap.Num(),
+                     " cachedMeshes=", MeshCache.Num(),
+                     " added=", AddedRegular, "+", AddedISM,
+                     " removed=", RemovedRegular, "+", RemovedISM,
+                     " range-skipped=", RangeSkipped);
     }
 }
 
