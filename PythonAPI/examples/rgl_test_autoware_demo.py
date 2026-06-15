@@ -855,14 +855,24 @@ def main():
 
 
     # Spawn Ego
-    try:
-        spawn_points = world.get_ego_spawn_points()
-    except AttributeError:
-        # Fallback when get_ego_spawn_points is not available (e.g. standard carla package)
-        spawn_points = world.get_map().get_spawn_points()
-    if not spawn_points:
-        raise RuntimeError("No spawn points available. Load a map that provides spawn points.")
-    spawn_point = random.choice(spawn_points)
+    _ego_spawn_env = os.environ.get("RGL_EGO_SPAWN")
+    if _ego_spawn_env:
+        # Fixed ego spawn for maps without spawn points (e.g. maps with no OpenDrive road network).
+        # Format: "x,y,z[,yaw]" in CARLA UE units (cm, deg).
+        _p = [float(v) for v in _ego_spawn_env.split(",")]
+        spawn_point = carla.Transform(
+            carla.Location(x=_p[0], y=_p[1], z=_p[2]),
+            carla.Rotation(yaw=_p[3] if len(_p) > 3 else 0.0))
+        log_info(f"Using fixed ego spawn from RGL_EGO_SPAWN: {spawn_point}")
+    else:
+        try:
+            spawn_points = world.get_ego_spawn_points()
+        except AttributeError:
+            # Fallback when get_ego_spawn_points is not available (e.g. standard carla package)
+            spawn_points = world.get_map().get_spawn_points()
+        if not spawn_points:
+            raise RuntimeError("No spawn points available. Load a map that provides spawn points.")
+        spawn_point = random.choice(spawn_points)
     ego = spawn_ego_with_sensors(world, spawn_point, args)
 
     world.tick()  # tick to process the changes (settings, ego + sensors spawn)

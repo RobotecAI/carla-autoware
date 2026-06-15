@@ -97,12 +97,16 @@ run_config() {  # $1=name  rest=demo args
 }
 
 # ---- 3. run configs ----
-# no-cull baseline: 1 sensor with a huge range -> registration sphere covers the
-# whole map -> every static mesh registered (= what we'd get without culling).
-DEMO_ENV="RGL_NOCULL_RANGE_M=$NOCULL_RANGE" run_config d_nocull --num_lidars 1
+# Culled configs first so their measurements are captured even if the no-cull
+# baseline below spikes VRAM / OOMs on a large map.
 run_config a_single    --num_lidars 1
 run_config b_cluster   --num_lidars 4 --lidar_spawn_delta_x 2 --lidar_spawn_delta_y 2
 run_config c_separated --num_lidars 2 --lidar_spawn_delta_x "$SEP"
+# no-cull baseline LAST: 1 sensor with a huge range -> registration sphere covers
+# the whole map -> every static mesh registered (= without culling). On a large map this
+# is the OOM scenario the feature prevents; if the server dies here, that crash is
+# itself the headline (culling avoids it) and the culled data above is preserved.
+DEMO_ENV="RGL_NOCULL_RANGE_M=$NOCULL_RANGE" run_config d_nocull --num_lidars 1
 
 # ---- 4. verdict ----
 nc=${CACHED[d_nocull]:-0}; ncv=${VRAM[d_nocull]:-0}
