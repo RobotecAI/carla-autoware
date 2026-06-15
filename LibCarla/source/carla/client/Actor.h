@@ -134,6 +134,13 @@ namespace client {
     /// Disable the constant acceleration mode
     void DisableConstantAcceleration();
 
+    /// Set jerk limits (rate-of-change of acceleration command) for constant acceleration mode.
+    /// Units: m/s^3. Use <= 0 to disable the corresponding limit.
+    void SetConstantAccelerationJerkLimit(float jerk_limit_pos_mps3, float jerk_limit_neg_mps3);
+
+    /// Set first-order lag time constant for constant acceleration target. Units: seconds. Use <= 0 to disable.
+    void SetConstantAccelerationFirstOrderLagTau(float tau_s);
+
     /// Add impulse to the actor at its center of mass.
     void AddImpulse(const geom::Vector3D &vector);
 

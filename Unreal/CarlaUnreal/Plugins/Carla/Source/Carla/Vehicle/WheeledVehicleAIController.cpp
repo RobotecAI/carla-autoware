@@ -147,7 +147,7 @@ void AWheeledVehicleAIController::Tick(const float DeltaTime)
     Vehicle->ApplyVehicleControl(FVehicleControl{}, EVehicleInputPriority::Relaxation);
   }
 
-  Vehicle->FlushVehicleControl();
+  Vehicle->FlushVehicleControl(DeltaTime);
 }
 
 // =============================================================================

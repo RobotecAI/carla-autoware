@@ -1294,6 +1294,73 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     return R<void>::Success();
   };
 
+  BIND_SYNC(set_actor_constant_acceleration_jerk_limit) << [this](
+      cr::ActorId ActorId,
+      float JerkLimitPosMps3,
+      float JerkLimitNegMps3) -> R<void>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_jerk_limit",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    if (CarlaActor->IsDormant())
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_jerk_limit",
+          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+
+    ACarlaWheeledVehicle* Vehicle = Cast<ACarlaWheeledVehicle>(CarlaActor->GetActor());
+    if (Vehicle == nullptr)
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_jerk_limit",
+          ECarlaServerResponse::NotAVehicle,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    Vehicle->SetAccelerationControlJerkLimit(JerkLimitPosMps3, JerkLimitNegMps3);
+    return R<void>::Success();
+  };
+
+  BIND_SYNC(set_actor_constant_acceleration_first_order_lag_tau) << [this](
+      cr::ActorId ActorId,
+      float TauS) -> R<void>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_first_order_lag_tau",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    if (CarlaActor->IsDormant())
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_first_order_lag_tau",
+          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+
+    ACarlaWheeledVehicle* Vehicle = Cast<ACarlaWheeledVehicle>(CarlaActor->GetActor());
+    if (Vehicle == nullptr)
+    {
+      return RespondError(
+          "set_actor_constant_acceleration_first_order_lag_tau",
+          ECarlaServerResponse::NotAVehicle,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    Vehicle->SetAccelerationControlFirstOrderLagTau(TauS);
+    return R<void>::Success();
+  };
+
   BIND_SYNC(add_actor_impulse) << [this](
       cr::ActorId ActorId,
       cr::Vector3D vector) -> R<void>
@@ -2123,6 +2190,72 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
           Response,
           " Actor Id: " + FString::FromInt(ActorId));
     }
+    return R<void>::Success();
+  };
+
+  BIND_SYNC(set_vehicle_steer_rate_limit) << [this](
+      cr::ActorId ActorId,
+      float SteerRateLimit1ps) -> R<void>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "set_vehicle_steer_rate_limit",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    if (CarlaActor->IsDormant())
+    {
+      return RespondError(
+          "set_vehicle_steer_rate_limit",
+          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+
+    ACarlaWheeledVehicle* Vehicle = Cast<ACarlaWheeledVehicle>(CarlaActor->GetActor());
+    if (Vehicle == nullptr)
+    {
+      return RespondError(
+          "set_vehicle_steer_rate_limit",
+          ECarlaServerResponse::NotAVehicle,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    Vehicle->SetSteerRateLimit(SteerRateLimit1ps);
+    return R<void>::Success();
+  };
+
+  BIND_SYNC(set_vehicle_steer_first_order_lag_tau) << [this](
+      cr::ActorId ActorId,
+      float TauS) -> R<void>
+  {
+    REQUIRE_CARLA_EPISODE();
+    FCarlaActor* CarlaActor = Episode->FindCarlaActor(ActorId);
+    if (!CarlaActor)
+    {
+      return RespondError(
+          "set_vehicle_steer_first_order_lag_tau",
+          ECarlaServerResponse::ActorNotFound,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    if (CarlaActor->IsDormant())
+    {
+      return RespondError(
+          "set_vehicle_steer_first_order_lag_tau",
+          ECarlaServerResponse::FunctionNotAvailiableWhenDormant,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+
+    ACarlaWheeledVehicle* Vehicle = Cast<ACarlaWheeledVehicle>(CarlaActor->GetActor());
+    if (Vehicle == nullptr)
+    {
+      return RespondError(
+          "set_vehicle_steer_first_order_lag_tau",
+          ECarlaServerResponse::NotAVehicle,
+          " Actor Id: " + FString::FromInt(ActorId));
+    }
+    Vehicle->SetSteerFirstOrderLagTau(TauS);
     return R<void>::Success();
   };
 

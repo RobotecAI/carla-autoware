@@ -172,7 +172,7 @@ void ACarlaWheeledVehicle::TickActor(float DeltaTime, enum ELevelTick TickType, 
   // When velocity/acceleration control is active, flush control every frame even without AI controller
   if (VelocityControl->IsActive() || AccelerationControl->IsActive())
   {
-    FlushVehicleControl();
+    FlushVehicleControl(DeltaTime);
   }
 
   FPoseSnapshot pose;
@@ -305,13 +305,46 @@ float ACarlaWheeledVehicle::GetMaximumSteerAngle() const
 
 void ACarlaWheeledVehicle::FlushVehicleControl()
 {
+  FlushVehicleControl(GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f);
+}
+
+void ACarlaWheeledVehicle::FlushVehicleControl(float DeltaTime)
+{
   if (bAckermannControlActive) {
     AckermannController.UpdateVehicleState(this);
     AckermannController.RunLoop(InputControl.Control);
   }
-  BaseMovementComponent->ProcessControl(InputControl.Control);
-  InputControl.Control.bReverse = InputControl.Control.Gear < 0;
-  LastAppliedControl = InputControl.Control;
+
+  // Apply steering rate limit (normalized steer in [-1, 1]) without destroying
+  // the desired command (important for sticky_control clients that do not resend).
+  FVehicleControl ControlToApply = InputControl.Control;
+  float SteerCommand = DesiredSteer;
+
+  // First-order lag on steering output (in addition to rate limiting).
+  if (DeltaTime > 0.0f && SteerFirstOrderLagTauS > 0.0f)
+  {
+    const float Alpha = 1.0f - FMath::Exp(-DeltaTime / SteerFirstOrderLagTauS);
+    SteerCommand = LastSteerApplied + Alpha * (DesiredSteer - LastSteerApplied);
+  }
+
+  // Rate limit on the resulting steering command.
+  if (DeltaTime > 0.0f && SteerRateLimit1ps > 0.0f)
+  {
+    const float MaxDelta = SteerRateLimit1ps * DeltaTime;
+    SteerCommand = FMath::Clamp(
+      SteerCommand,
+      LastSteerApplied - MaxDelta,
+      LastSteerApplied + MaxDelta);
+  }
+
+  ControlToApply.Steer = SteerCommand;
+
+  BaseMovementComponent->ProcessControl(ControlToApply);
+  ControlToApply.bReverse = ControlToApply.Gear < 0;
+  LastAppliedControl = ControlToApply;
+  LastSteerApplied = LastAppliedControl.Steer;
+  // Keep the internal control in sync (except steer, which is tracked by DesiredSteer).
+  InputControl.Control = ControlToApply;
   InputControl.Priority = EVehicleInputPriority::INVALID;
 }
 
@@ -555,60 +588,81 @@ void ACarlaWheeledVehicle::ApplyVehiclePhysicsControl(
   for (auto& WheelSetup : VehicleMovComponent.WheelSetups)
     check(WheelSetup.WheelClass != nullptr);
 
-  for (int32 i = 0; i < WheelCount; ++i)
+  // Apply wheel setup, recreate Chaos state, then apply again: RecreatePhysicsState can
+  // re-instantiate UChaosVehicleWheel state from CDOs and discard the first pass of
+  // runtime tuning (Python get_physics_control then read unchanged defaults).
+  const auto ApplyWheelSetupFromPhysicsControl = [&]()
   {
-    auto& In = PhysicsControl.Wheels[i];
-    auto OutPtr = VehicleMovComponent.Wheels[i];
-    check(OutPtr != nullptr);
-    auto& Out = *OutPtr;
+    for (int32 i = 0; i < WheelCount; ++i)
+    {
+      auto& In = PhysicsControl.Wheels[i];
+      auto OutPtr = VehicleMovComponent.Wheels[i];
+      check(OutPtr != nullptr);
+      auto& Out = *OutPtr;
 
-    Out.AxleType = In.AxleType;
-    Out.Offset = In.Offset;
-    VehicleMovComponent.SetWheelRadius(i, In.WheelRadius);
-    Out.WheelWidth = In.WheelWidth;
-    Out.WheelMass = In.WheelMass;
-    Out.CorneringStiffness = In.CorneringStiffness;
-    VehicleMovComponent.SetWheelFrictionMultiplier(i, In.FrictionForceMultiplier);
-    Out.SideSlipModifier = In.SideSlipModifier;
-    Out.SlipThreshold = In.SlipThreshold;
-    Out.SkidThreshold = In.SkidThreshold;
-    VehicleMovComponent.SetWheelMaxSteerAngle(i, In.MaxSteerAngle);
-    Out.bAffectedBySteering = In.bAffectedBySteering;
-    Out.bAffectedByBrake = In.bAffectedByBrake;
-    Out.bAffectedByHandbrake = In.bAffectedByHandbrake;
-    Out.bAffectedByEngine = In.bAffectedByEngine;
-    VehicleMovComponent.SetABSEnabled(i, In.bABSEnabled);
-    VehicleMovComponent.SetTractionControlEnabled(i, In.bTractionControlEnabled);
-    Out.MaxWheelspinRotation = In.MaxWheelspinRotation;
-    Out.ExternalTorqueCombineMethod = In.ExternalTorqueCombineMethod;
-    Out.LateralSlipGraph.EditorCurveData = In.LateralSlipGraph;
-    Out.SuspensionAxis = In.SuspensionAxis;
-    Out.SuspensionForceOffset = In.SuspensionForceOffset;
-    Out.SuspensionMaxRaise = In.SuspensionMaxRaise;
-    Out.SuspensionMaxDrop = In.SuspensionMaxDrop;
-    Out.SuspensionDampingRatio = In.SuspensionDampingRatio;
-    Out.WheelLoadRatio = In.WheelLoadRatio;
-    Out.SpringRate = In.SpringRate;
-    Out.SpringPreload = In.SpringPreload;
-    Out.SuspensionSmoothing = In.SuspensionSmoothing;
-    Out.RollbarScaling = In.RollbarScaling;
-    Out.SweepShape = In.SweepShape;
-    Out.SweepType = In.SweepType;
-    VehicleMovComponent.SetWheelMaxBrakeTorque(i, In.MaxBrakeTorque);
-    VehicleMovComponent.SetWheelHandbrakeTorque(i, In.MaxHandBrakeTorque);
-    Out.WheelIndex = In.WheelIndex;
-    Out.Location = In.Location;
-    Out.OldLocation = In.OldLocation;
-    Out.Velocity = In.Velocity;
+      Out.AxleType = In.AxleType;
+      Out.Offset = In.Offset;
+      VehicleMovComponent.SetWheelRadius(i, In.WheelRadius);
+      Out.WheelWidth = In.WheelWidth;
+      Out.WheelMass = In.WheelMass;
+      Out.CorneringStiffness = In.CorneringStiffness;
+      // UObject must match Chaos PT: GetVehiclePhysicsControl reads FrictionForceMultiplier from the wheel
+      // object; SetWheelFrictionMultiplier only updates the physics-thread sim wheel.
+      Out.FrictionForceMultiplier = In.FrictionForceMultiplier;
+      VehicleMovComponent.SetWheelFrictionMultiplier(i, In.FrictionForceMultiplier);
+      Out.SideSlipModifier = In.SideSlipModifier;
+      Out.SlipThreshold = In.SlipThreshold;
+      Out.SkidThreshold = In.SkidThreshold;
+      VehicleMovComponent.SetWheelMaxSteerAngle(i, In.MaxSteerAngle);
+      Out.bAffectedBySteering = In.bAffectedBySteering;
+      Out.bAffectedByBrake = In.bAffectedByBrake;
+      Out.bAffectedByHandbrake = In.bAffectedByHandbrake;
+      Out.bAffectedByEngine = In.bAffectedByEngine;
+      VehicleMovComponent.SetABSEnabled(i, In.bABSEnabled);
+      VehicleMovComponent.SetTractionControlEnabled(i, In.bTractionControlEnabled);
+      Out.MaxWheelspinRotation = In.MaxWheelspinRotation;
+      Out.ExternalTorqueCombineMethod = In.ExternalTorqueCombineMethod;
+      Out.LateralSlipGraph.EditorCurveData = In.LateralSlipGraph;
+      Out.SuspensionAxis = In.SuspensionAxis;
+      Out.SuspensionForceOffset = In.SuspensionForceOffset;
+      Out.SuspensionMaxRaise = In.SuspensionMaxRaise;
+      Out.SuspensionMaxDrop = In.SuspensionMaxDrop;
+      Out.SuspensionDampingRatio = In.SuspensionDampingRatio;
+      Out.WheelLoadRatio = In.WheelLoadRatio;
+      Out.SpringRate = In.SpringRate;
+      Out.SpringPreload = In.SpringPreload;
+      Out.SuspensionSmoothing = In.SuspensionSmoothing;
+      Out.RollbarScaling = In.RollbarScaling;
+      Out.SweepShape = In.SweepShape;
+      Out.SweepType = In.SweepType;
+      VehicleMovComponent.SetWheelMaxBrakeTorque(i, In.MaxBrakeTorque);
+      VehicleMovComponent.SetWheelHandbrakeTorque(i, In.MaxHandBrakeTorque);
+      Out.WheelIndex = In.WheelIndex;
+      Out.Location = In.Location;
+      Out.OldLocation = In.OldLocation;
+      Out.Velocity = In.Velocity;
 
-    Out.SweepShape =
-      PhysicsControl.UseSweepWheelCollision ?
-      ESweepShape::Spherecast :
-      ESweepShape::Raycast;
-  }
+      Out.SweepShape =
+        PhysicsControl.UseSweepWheelCollision ?
+        ESweepShape::Spherecast :
+        ESweepShape::Raycast;
+    }
+  };
 
+  ApplyWheelSetupFromPhysicsControl();
   VehicleMovComponent.RecreatePhysicsState();
   ResetConstraints();
+  ApplyWheelSetupFromPhysicsControl();
+
+  if (VehicleMovComponent.Wheels.Num() > 0 && VehicleMovComponent.Wheels[0] != nullptr)
+  {
+    UE_LOG(
+        LogCarla,
+        Log,
+        TEXT("ApplyVehiclePhysicsControl: wheel[0] UObject Cornering=%.4f FrictionFM=%.4f (post wheel tune)"),
+        VehicleMovComponent.Wheels[0]->CorneringStiffness,
+        VehicleMovComponent.Wheels[0]->FrictionForceMultiplier);
+  }
 
   auto* Recorder = UCarlaStatics::GetRecorder(GetWorld());
   if (Recorder && Recorder->IsEnabled())
@@ -644,6 +698,7 @@ void ACarlaWheeledVehicle::ApplyVehicleControl(const FVehicleControl& Control, E
   if (InputControl.Priority <= Priority)
   {
     InputControl.Control = Control;
+    DesiredSteer = Control.Steer;
     InputControl.Priority = Priority;
   }
 }
@@ -667,12 +722,40 @@ void ACarlaWheeledVehicle::DeactivateVelocityControl()
 
 void ACarlaWheeledVehicle::ActivateAccelerationControl(const FVector& Acceleration)
 {
-  AccelerationControl->Activate(Acceleration);
+  if (AccelerationControl->IsActive())
+  {
+    AccelerationControl->SetTargetAcceleration(Acceleration);
+  }
+  else
+  {
+    AccelerationControl->Activate(Acceleration);
+  }
 }
 
 void ACarlaWheeledVehicle::DeactivateAccelerationControl()
 {
   AccelerationControl->Deactivate();
+}
+
+void ACarlaWheeledVehicle::SetAccelerationControlJerkLimit(float JerkLimitPosMps3, float JerkLimitNegMps3)
+{
+  if (AccelerationControl == nullptr)
+  {
+    return;
+  }
+  // Convert m/s^3 -> cm/s^3.
+  const float PosCmps3 = JerkLimitPosMps3 * 100.0f;
+  const float NegCmps3 = JerkLimitNegMps3 * 100.0f;
+  AccelerationControl->SetJerkLimit(PosCmps3, NegCmps3);
+}
+
+void ACarlaWheeledVehicle::SetAccelerationControlFirstOrderLagTau(float InTauS)
+{
+  if (AccelerationControl == nullptr)
+  {
+    return;
+  }
+  AccelerationControl->SetFirstOrderLagTau(InTauS);
 }
 
 void ACarlaWheeledVehicle::ApplyVehicleAccelerationControl(float LongitudinalAccelerationMps2, float Steer, float SteerSpeed)
@@ -686,7 +769,7 @@ void ACarlaWheeledVehicle::ApplyVehicleAccelerationControl(float LongitudinalAcc
 
   // Longitudinal: acceleration from control_cmd [m/s^2] -> Unreal uses cm/s^2
   const FVector AccelerationCmps2(LongitudinalAccelerationMps2 * 100.0f, 0.0f, 0.0f);
-  AccelerationControl->Activate(AccelerationCmps2);
+  ActivateAccelerationControl(AccelerationCmps2);
 
   InputControl.Control.Steer = Steer;
   InputControl.Priority = EVehicleInputPriority::User;
