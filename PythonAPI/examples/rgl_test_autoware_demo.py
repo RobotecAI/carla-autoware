@@ -234,6 +234,14 @@ def generate_vlp16_blueprint(blueprint_library, lidar_type="rgl",
         blueprint.set_attribute("lower_fov", "-20.0")
         blueprint.set_attribute("points_per_second", "288000")
 
+    # No-culling VRAM baseline: when RGL_NOCULL_RANGE_M is set, override the LiDAR
+    # range so the distance-culling sphere covers the whole map and every static
+    # mesh is registered. The point buffer is ray-count-based (range-independent),
+    # so VRAM stays comparable to the culled runs except for the registered scene.
+    _nocull_range = os.environ.get("RGL_NOCULL_RANGE_M")
+    if _nocull_range:
+        blueprint.set_attribute("range", _nocull_range)
+
     blueprint.set_attribute("sensor_tick", "0.1")
 
     # CARLA built-in ROS settings (used by enable_for_ros(), works for both ray_cast and rgl)
