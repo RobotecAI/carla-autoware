@@ -15,7 +15,7 @@ MODEL = {
     ],
     "horizontal_angle_offsets": [],
     "ring_ids": [
-        1,
+        0,
     ],
 }
 
