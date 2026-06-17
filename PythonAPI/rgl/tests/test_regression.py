@@ -275,6 +275,31 @@ def test_preset_data(result):
                  abs(hesai_bd["horizontal"] - 0.13) < 0.001,
                  f"got {hesai_bd['horizontal']}")
 
+    # ring_ids must be 0-based and contiguous (0..D-1 over distinct rings).
+    # The ring_id is published verbatim as the ROS2 PointXYZIRCAEDT "channel"
+    # field; Autoware's blockage diagnostic rejects channel >= vertical_bins
+    # (== channel count), so a 1-based top ring (value == channels) throws
+    # "Vertical bin is not valid" and aborts the perception container.
+    # 0-based is grounded in manufacturer specs (Hesai/SICK number channels
+    # 1-based -> driver subtracts 1; see docs/LidarSpecs) and the drivers that
+    # publish "channel" 0-based: tier4/nebula (point.channel = channel_id 0..N-1,
+    # elev_angle_map[laser_id-1]), velodyne_pointcloud/nebula (laser_ring 0-based),
+    # ouster-ros (ring = row index 0..h-1), SICK sick_scan_xd (Row 0..23).
+    # RangeMeter is a generic single-ray sample (no manufacturer) and follows the
+    # same 0-based convention.
+    for name, m in sorted(MODEL_REGISTRY.items()):
+        rids = m.get("ring_ids", [])
+        if not rids:
+            continue
+        distinct = sorted(set(rids))
+        result.check(f"ring_ids_0based_{name}", min(rids) == 0,
+                     f"min={min(rids)}")
+        result.check(f"ring_ids_contiguous_{name}",
+                     distinct == list(range(len(distinct))),
+                     f"max={max(rids)} distinct={len(distinct)}")
+        result.check(f"ring_ids_below_channels_{name}", max(rids) < m["channels"],
+                     f"max={max(rids)} channels={m['channels']}")
+
 
 def test_spawn_all(world, result):
     """Test spawning all 13 presets without crash."""
