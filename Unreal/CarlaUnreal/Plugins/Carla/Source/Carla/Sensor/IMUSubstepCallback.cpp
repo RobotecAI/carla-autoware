@@ -35,12 +35,8 @@ void FIMUSubstepCallback::OnPostIntegrate_Internal()
 
   FIMUSubstepOutput& Out = GetProducerOutputData_Internal();
   FIMUSubstepSample S;
-  S.PosX   = FVector(Rigid->GetX());
-  S.PosP   = FVector(Rigid->GetP());
-  S.RotR   = FQuat(Rigid->GetR());
-  S.RotQ   = FQuat(Rigid->GetQ());
-  S.LinVel = FVector(Rigid->GetV());
-  S.AngVel = FVector(Rigid->GetW());
-  S.Dt     = static_cast<float>(GetDeltaTime_Internal());
+  S.PosP = FVector(Rigid->GetP());
+  S.RotQ = FQuat(Rigid->GetQ());
+  S.Dt   = static_cast<float>(GetDeltaTime_Internal());
   Out.Samples.Add(S);
 }

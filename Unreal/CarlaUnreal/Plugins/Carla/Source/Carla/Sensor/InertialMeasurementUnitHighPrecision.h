@@ -17,14 +17,27 @@
 
 #include "InertialMeasurementUnitHighPrecision.generated.h"
 
-/// High-precision IMU. When a valid Chaos vehicle physics proxy is available,
-/// the gyroscope and accelerometer are computed and published once per physics
-/// substep (each with its own timestamp), driven by a PostIntegrate sim
-/// callback that captures the vehicle body kinematics on the physics thread.
-/// If no proxy is available (or no substep samples arrive), it falls back to
-/// the Phase 1 frame-rate path inherited from AInertialMeasurementUnit
-/// (transform-difference gyro). Noise/bias model, compass, serialization and
-/// ROS2 publishing are reused from the base class.
+/// Output mode for the high-precision IMU.
+enum class EIMUOutputMode : uint8
+{
+  /// Use substep path when a valid physics proxy is available; else upsample.
+  Auto,
+  /// Always register the substep callback (falls back to frame-rate only when
+  /// the proxy is absent).
+  Substep,
+  /// Never register the substep callback; emit N ZOH copies of the frame-rate
+  /// value to maintain the target output_rate_hz.
+  Upsample,
+};
+
+/// High-precision IMU. When substep mode is active and a valid Chaos vehicle
+/// physics proxy is available, the gyroscope and accelerometer are computed and
+/// published once per physics substep (each with its own timestamp), driven by
+/// a PostIntegrate sim callback that captures the vehicle body kinematics on
+/// the physics thread. In upsample mode (or when no proxy is available), the
+/// frame-rate value is emitted N times per frame (zero-order hold) to maintain
+/// the target output_rate_hz. Noise/bias model, compass, serialization and ROS2
+/// publishing are reused from the base class.
 UCLASS()
 class CARLA_API AInertialMeasurementUnitHighPrecision : public AInertialMeasurementUnit
 {
@@ -36,9 +49,20 @@ public:
 
   static FActorDefinition GetSensorDefinition();
 
+  void Set(const FActorDescription &ActorDescription) override;
+
   virtual carla::geom::Vector3D ComputeGyroscope() override;
 
   virtual void PostPhysTick(UWorld *World, ELevelTick TickType, float DeltaTime) override;
+
+  /// Publish a single sample (ROS2 + streaming) with a per-sample timestamp
+  /// offset (seconds before the frame stamp). Public so that the file-local
+  /// ZOH helper can call it without requiring a friend declaration.
+  void PublishSubstepSample(
+      double TimeOffsetSeconds,
+      const carla::geom::Vector3D &Accelerometer,
+      const carla::geom::Vector3D &Gyroscope,
+      float Compass);
 
 protected:
 
@@ -62,6 +86,15 @@ private:
   void RegisterSubstepCallback();
   void UnregisterSubstepCallback();
 
+  // ---- Output mode and rate (set from blueprint attributes) ----
+
+  /// Configured mode (from substep_mode attribute). Auto selects substep when
+  /// a valid proxy is available, otherwise falls back to upsample.
+  EIMUOutputMode ConfiguredMode = EIMUOutputMode::Auto;
+
+  /// Target publish rate in Hz for the upsample (ZOH) path.
+  float OutputRateHz = 200.0f;
+
   // ---- Mount (sensor relative to vehicle body), captured once ----
 
   FQuat   MountRelRot = FQuat::Identity;
@@ -80,12 +113,4 @@ private:
     FVector::OneVector * std::numeric_limits<float>::quiet_NaN()
   };
   float PrevSubDt = std::numeric_limits<float>::quiet_NaN();
-
-  /// Publish a single substep sample (ROS2 + streaming) with a per-substep
-  /// timestamp offset (seconds before the frame stamp).
-  void PublishSubstepSample(
-      double TimeOffsetSeconds,
-      const carla::geom::Vector3D &Accelerometer,
-      const carla::geom::Vector3D &Gyroscope,
-      float Compass);
 };

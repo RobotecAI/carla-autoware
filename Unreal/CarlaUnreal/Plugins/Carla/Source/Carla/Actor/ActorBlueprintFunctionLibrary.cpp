@@ -646,6 +646,28 @@ FActorDefinition UActorBlueprintFunctionLibrary::MakeIMUHighPrecisionDefinition(
   bool Success = false;
   BuildIMUDefinition(Success, Definition, TEXT("imu_highprecision"));
   check(Success);
+
+  // High-precision-only attributes (not added to the base sensor.other.imu).
+
+  // Output mode: substep captures physics-thread kinematics once per substep;
+  // upsample emits N ZOH copies of the frame-rate value; auto picks substep
+  // when a valid vehicle physics proxy is available, else upsample.
+  FActorVariation SubstepMode;
+  SubstepMode.Id = TEXT("substep_mode");
+  SubstepMode.Type = EActorAttributeType::String;
+  SubstepMode.RecommendedValues = { TEXT("auto"), TEXT("substep"), TEXT("upsample") };
+  SubstepMode.bRestrictToRecommended = false;
+
+  // Target publish rate in Hz for the upsample (ZOH) path. Has no effect in
+  // substep mode (the rate is determined by the physics substep frequency).
+  FActorVariation OutputRateHz;
+  OutputRateHz.Id = TEXT("output_rate_hz");
+  OutputRateHz.Type = EActorAttributeType::Float;
+  OutputRateHz.RecommendedValues = { TEXT("200.0") };
+  OutputRateHz.bRestrictToRecommended = false;
+
+  Definition.Variations.Append({ SubstepMode, OutputRateHz });
+
   return Definition;
 }
 

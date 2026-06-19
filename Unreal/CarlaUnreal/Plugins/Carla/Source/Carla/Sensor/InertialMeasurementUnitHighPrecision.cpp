@@ -33,6 +33,31 @@ FActorDefinition AInertialMeasurementUnitHighPrecision::GetSensorDefinition()
   return UActorBlueprintFunctionLibrary::MakeIMUHighPrecisionDefinition();
 }
 
+void AInertialMeasurementUnitHighPrecision::Set(const FActorDescription &ActorDescription)
+{
+  // Base class reads noise/bias attributes.
+  Super::Set(ActorDescription);
+
+  // Read high-precision-specific attributes.
+  const FString ModeStr = UActorBlueprintFunctionLibrary::RetrieveActorAttributeToString(
+      TEXT("substep_mode"), ActorDescription.Variations, TEXT("auto"));
+  if (ModeStr.Equals(TEXT("substep"), ESearchCase::IgnoreCase))
+  {
+    ConfiguredMode = EIMUOutputMode::Substep;
+  }
+  else if (ModeStr.Equals(TEXT("upsample"), ESearchCase::IgnoreCase))
+  {
+    ConfiguredMode = EIMUOutputMode::Upsample;
+  }
+  else
+  {
+    ConfiguredMode = EIMUOutputMode::Auto; // "auto" or unrecognised
+  }
+
+  OutputRateHz = UActorBlueprintFunctionLibrary::RetrieveActorAttributeToFloat(
+      TEXT("output_rate_hz"), ActorDescription.Variations, 200.0f);
+}
+
 // =========================================================================
 // Phase 1 frame-rate gyro (fallback path, used when substep is unavailable).
 // =========================================================================
@@ -98,6 +123,12 @@ carla::geom::Vector3D AInertialMeasurementUnitHighPrecision::ComputeGyroscope()
 
 void AInertialMeasurementUnitHighPrecision::RegisterSubstepCallback()
 {
+  // In upsample mode we intentionally skip registering the substep callback.
+  if (ConfiguredMode == EIMUOutputMode::Upsample)
+  {
+    return;
+  }
+
   UWorld* World = GetWorld();
   if (World == nullptr) return;
   FPhysScene_Chaos* Scene = static_cast<FPhysScene_Chaos*>(World->GetPhysicsScene());
@@ -117,7 +148,7 @@ void AInertialMeasurementUnitHighPrecision::RegisterSubstepCallback()
   {
     UE_LOG(LogCarla, Warning,
         TEXT("imu_highprecision: no vehicle physics proxy; substep unavailable, "
-             "falling back to frame-rate path"));
+             "falling back to upsample ZOH path"));
     return;
   }
   SubstepCallback = Solver->CreateAndRegisterSimCallbackObject_External<FIMUSubstepCallback>();
@@ -185,7 +216,32 @@ void AInertialMeasurementUnitHighPrecision::PublishSubstepSample(
 }
 
 // =========================================================================
-// PostPhysTick: substep path if samples are available, else Phase 1 fallback.
+// ZOH upsample helper: emits N copies of a frame-rate IMU value.
+// =========================================================================
+
+static void EmitZOHSamples(
+    AInertialMeasurementUnitHighPrecision* Sensor,
+    float OutputRateHz,
+    float DeltaTime)
+{
+  const int32 N = FMath::Max(1, FMath::RoundToInt(OutputRateHz * DeltaTime));
+  const carla::geom::Vector3D G = Sensor->ComputeGyroscope();
+  const carla::geom::Vector3D A = Sensor->ComputeAccelerometer(
+      Sensor->GetWorld()->GetTimeSeconds());
+  const float Compass = Sensor->ComputeCompass();
+  for (int32 k = 0; k < N; ++k)
+  {
+    // Timestamps are evenly spaced across the frame ending at the frame stamp.
+    // Sample k=0 is the oldest (furthest before the frame stamp),
+    // sample k=N-1 is the most recent (at the frame stamp).
+    const double tOffset =
+        static_cast<double>(N - 1 - k) * static_cast<double>(DeltaTime) / N;
+    Sensor->PublishSubstepSample(tOffset, A, G, Compass);
+  }
+}
+
+// =========================================================================
+// PostPhysTick: mode-dispatch to substep path, upsample ZOH path, or fallback.
 // =========================================================================
 
 void AInertialMeasurementUnitHighPrecision::PostPhysTick(
@@ -193,16 +249,25 @@ void AInertialMeasurementUnitHighPrecision::PostPhysTick(
 {
   TRACE_CPUPROFILER_EVENT_SCOPE(AInertialMeasurementUnitHighPrecision::PostPhysTick);
 
-  // First-time registration (owner/proxy not available before BeginPlay/SetOwner).
+  // Upsample-only mode: skip substep registration entirely; emit ZOH samples.
+  if (ConfiguredMode == EIMUOutputMode::Upsample)
+  {
+    EmitZOHSamples(this, OutputRateHz, DeltaTime);
+    return;
+  }
+
+  // Auto / Substep mode: try to register the substep callback on first tick.
   if (SubstepCallback == nullptr && VehicleProxy == nullptr)
   {
     RegisterSubstepCallback();
   }
 
-  // No callback registered (no valid proxy): take the Phase 1 frame-rate path.
+  // No callback registered (no valid proxy): fall back to ZOH upsample.
+  // The base PrevLocation/PrevTime will be seeded by ComputeAccelerometer on
+  // the first call; the base NaN guard handles the first-sample transition.
   if (SubstepCallback == nullptr)
   {
-    Super::PostPhysTick(World, TickType, DeltaTime);
+    EmitZOHSamples(this, OutputRateHz, DeltaTime);
     return;
   }
 
@@ -222,10 +287,14 @@ void AInertialMeasurementUnitHighPrecision::PostPhysTick(
 
   const int32 N = Frame.Num();
 
-  // No samples this frame: keep producing IMU data via the frame-rate path.
+  // No samples this frame (e.g. first frame before the physics thread has fired,
+  // or a brief transition out of substep). The base PrevLocation/PrevTime become
+  // stale when we were in the substep path last frame, which would cause a
+  // one-frame spike in the base accelerometer. Fall back to ZOH upsample;
+  // the base NaN/IsFinite guard will re-seed on the next valid call.
   if (N == 0)
   {
-    Super::PostPhysTick(World, TickType, DeltaTime);
+    EmitZOHSamples(this, OutputRateHz, DeltaTime);
     return;
   }
 
@@ -238,29 +307,31 @@ void AInertialMeasurementUnitHighPrecision::PostPhysTick(
     bMountCaptured = true;
   }
 
-  // One-line diagnostic: confirms substep firing and the GetR-vs-GetQ choice.
-  {
-    const FIMUSubstepSample& Last = Frame[N - 1];
-    UE_LOG(LogCarla, Log,
-        TEXT("imu_highprecision: substeps_this_frame=%d dt=%.4f rotR=%s rotQ=%s"),
-        N, DeltaTime, *Last.RotR.Rotator().ToString(), *Last.RotQ.Rotator().ToString());
-  }
-
   const ACarlaGameModeBase* GameMode = UCarlaStatics::GetGameMode(GetWorld());
   const float GRAVITY = (GameMode != nullptr) ? GameMode->IMUSensorGravity : -9.81f;
-  // Used to convert from UE's cm to meters (matches the base accelerometer).
+  // Convert UE's cm to meters (matches the base accelerometer convention).
   constexpr float TO_METERS = 1e-2f;
 
   // Compass uses the current frame value (low-rate orientation reference).
   const float Compass = ComputeCompass();
 
+  // Precompute suffix sums of Dt for accurate per-substep timestamps.
+  // SuffixDt[k] = sum of Frame[j].Dt for j = k+1 .. N-1.
+  // This is the elapsed time from the END of substep k to the frame stamp,
+  // which equals the per-substep time offset for sample k.
+  TArray<double> SuffixDt;
+  SuffixDt.SetNumUninitialized(N);
+  SuffixDt[N - 1] = 0.0;
+  for (int32 j = N - 2; j >= 0; --j)
+  {
+    SuffixDt[j] = SuffixDt[j + 1] + static_cast<double>(Frame[j + 1].Dt);
+  }
+
   for (int32 k = 0; k < N; ++k)
   {
     const FIMUSubstepSample& S = Frame[k];
 
-    // Resolution #1: GetQ (rotation) and GetP (position) are the up-to-date
-    // post-integrate values at OnPostIntegrate_Internal time. The raw GetR/GetX
-    // are kept in the sample and reported by the diagnostic above.
+    // GetQ/GetP are the up-to-date post-integrate values at OnPostIntegrate_Internal time.
     const FQuat   BodyRot = S.RotQ;
     const FVector BodyPos = S.PosP;
 
@@ -307,10 +378,9 @@ void AInertialMeasurementUnitHighPrecision::PostPhysTick(
       }
     }
 
-    // Publish: per-substep timestamp = frame stamp minus (N-1-k) samples' worth.
-    const double TimeOffset =
-        static_cast<double>(N - 1 - k) * static_cast<double>(S.Dt);
-    PublishSubstepSample(TimeOffset, Accel, Gyro, Compass);
+    // Per-substep timestamp: use accumulated suffix dt for accuracy with
+    // non-uniform substep sizes (robust to variable substep dt).
+    PublishSubstepSample(SuffixDt[k], Accel, Gyro, Compass);
 
     // Advance integration state.
     PrevImuRot = ImuRot;

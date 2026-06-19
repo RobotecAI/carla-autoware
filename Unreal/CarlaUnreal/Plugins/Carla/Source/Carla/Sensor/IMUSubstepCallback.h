@@ -18,19 +18,13 @@
 #include <util/ue-header-guard-end.h>
 
 /// One per-substep raw kinematics sample of the vehicle body, captured on the
-/// physics thread. Both the pre-integrate (X/R) and the post-integrate (P/Q)
-/// quantities are kept so the game thread can confirm which pair carries the
-/// up-to-date integrated transform at PostIntegrate time (see the diagnostic in
-/// AInertialMeasurementUnitHighPrecision::PostPhysTick). IMU math is done on the
-/// game thread; nothing here touches CARLA sensor state.
+/// physics thread. Only the post-integrate quantities (P/Q) are kept, as those
+/// are the up-to-date integrated values at OnPostIntegrate_Internal time.
+/// IMU math is done on the game thread; nothing here touches CARLA sensor state.
 struct FIMUSubstepSample
 {
-  FVector PosX = FVector::ZeroVector;   // GetX() (pre-integrate position)
-  FVector PosP = FVector::ZeroVector;   // GetP() (post-integrate position, expected up-to-date)
-  FQuat   RotR = FQuat::Identity;       // GetR() (pre-integrate rotation)
-  FQuat   RotQ = FQuat::Identity;       // GetQ() (post-integrate rotation, expected up-to-date)
-  FVector LinVel = FVector::ZeroVector; // GetV()
-  FVector AngVel = FVector::ZeroVector; // GetW()
+  FVector PosP = FVector::ZeroVector;   // GetP() (post-integrate position)
+  FQuat   RotQ = FQuat::Identity;       // GetQ() (post-integrate rotation)
   float   Dt = 0.0f;                    // substep dt (seconds)
 };
 
