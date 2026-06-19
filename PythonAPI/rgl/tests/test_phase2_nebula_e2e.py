@@ -127,18 +127,12 @@ def wait_for_carla_rpc(host, port, timeout=60.0):
     timeout expires. Returns True on success, False otherwise."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1.0)
-        try:
-            sock.connect((host, port))
-            sock.close()
-            return True
-        except (socket.timeout, ConnectionRefusedError, OSError):
-            pass
-        finally:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1.0)
             try:
-                sock.close()
-            except OSError:
+                sock.connect((host, port))
+                return True
+            except (socket.timeout, ConnectionRefusedError, OSError):
                 pass
         time.sleep(1.0)
     return False
@@ -188,7 +182,10 @@ def check_prereqs():
     try:
         from lidar_models import apply_preset  # noqa: F401
     except ImportError as e:
-        issues.append(f"lidar_models package not importable: {e}")
+        issues.append(
+            f"lidar_models package not importable: {e}\n"
+            f"  Verify PythonAPI/rgl/lidar_models/ exists and is intact"
+        )
 
     try:
         import rclpy  # noqa: F401
@@ -208,7 +205,7 @@ def check_prereqs():
     try:
         result = subprocess.run(
             ["ros2", "pkg", "prefix", "nebula_ros"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=10,
         )
         ros2_ok = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -224,7 +221,12 @@ def check_prereqs():
     if issues:
         print("PREREQUISITE CHECK FAILED:")
         for i in issues:
-            print(f"  - {i}")
+            # Each issue may span multiple lines (hint text). Indent
+            # continuation lines so the "- " bullet visually owns the block.
+            lines = i.splitlines()
+            print(f"  - {lines[0]}")
+            for cont in lines[1:]:
+                print(f"    {cont}")
         return 2
     return 0
 
