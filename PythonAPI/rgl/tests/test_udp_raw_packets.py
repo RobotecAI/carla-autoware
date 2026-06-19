@@ -119,14 +119,31 @@ VLP_RETURN_MODE_DUAL = 0x39
 
 def decode_vlp_packet(pkt):
     """Validate one VLP16 Legacy Format packet. Returns (azimuths, timestamp_us)
-    on success or raises AssertionError."""
+    on success or raises AssertionError.
+
+    RGL's UDP extension emits one rotation-boundary packet every ~38 packets
+    that has blocks 0..N populated (N<12) and blocks N..11 all-zero padded.
+    This decoder accepts those by stopping validation at the first all-zero
+    flag and verifying the remaining bytes are pure padding.
+    """
     assert len(pkt) == VLP_PACKET_SIZE, \
         f"packet size {len(pkt)} != {VLP_PACKET_SIZE}"
 
     azimuths = []
+    rotation_boundary_at = None  # index of first zero-padding block, or None
+
     for fseq in range(12):
         offset = fseq * 100
         flag = struct.unpack_from("<H", pkt, offset)[0]
+
+        if flag == 0:
+            # Rotation-boundary padding starts here. Verify rest of this 100-byte
+            # block is fully zero, then break (remaining blocks must also be all-zero).
+            assert pkt[offset:offset + 100] == b"\x00" * 100, \
+                f"firing block {fseq} has zero flag but non-zero payload"
+            rotation_boundary_at = fseq
+            break
+
         assert flag == VLP_FIRING_FLAG, \
             f"firing block {fseq} flag mismatch: {flag:#06x}"
 
@@ -142,6 +159,15 @@ def decode_vlp_packet(pkt):
             # 0 means no-hit; positive values must respect Legacy Format cap.
             assert 0.0 <= distance_m <= 262.14, \
                 f"firing block {fseq} ch {ch} distance out of range: {distance_m}"
+
+    # If we hit a zero-padding boundary, verify all subsequent blocks are also
+    # all-zero (no partially-corrupted blocks past the boundary).
+    if rotation_boundary_at is not None:
+        pad_start = rotation_boundary_at * 100
+        pad_end = 12 * 100  # block region ends at byte 1200
+        assert pkt[pad_start:pad_end] == b"\x00" * (pad_end - pad_start), \
+            f"non-zero bytes found in rotation-padding region " \
+            f"(blocks {rotation_boundary_at}..11)"
 
     timestamp_us = struct.unpack_from("<I", pkt, 1200)[0]
     return_mode = pkt[1204]
@@ -226,6 +252,8 @@ def test_vlp16_deep_validation(world):
             all_az.append((azimuths, ts))
 
         # Within each packet, azimuths must be non-decreasing modulo wrap.
+        # Rotation-boundary packets may have only a few populated blocks; skip
+        # those without enough data to compare.
         for i, (azimuths, _) in enumerate(all_az):
             for j in range(1, len(azimuths)):
                 diff = (azimuths[j] - azimuths[j - 1]) % 360.0
