@@ -75,7 +75,6 @@ namespace sensor {
     std::pair<ADVSCamera *, s11n::DVSEventArraySerializer>,
     std::pair<AGnssSensor *, s11n::GnssSerializer>,
     std::pair<AInertialMeasurementUnit *, s11n::IMUSerializer>,
-    std::pair<AInertialMeasurementUnitHighPrecision *, s11n::IMUSerializer>,
     std::pair<ALaneInvasionSensor *, s11n::NoopSerializer>,
     std::pair<AObstacleDetectionSensor *, s11n::ObstacleDetectionEventSerializer>,
     std::pair<AOpticalFlowCamera *, s11n::OpticalFlowImageSerializer>,
@@ -94,6 +93,8 @@ namespace sensor {
 #ifdef WITH_RGL
     ,std::pair<ARGLLidar *, s11n::LidarSerializer> // RGL GPU-accelerated LiDAR (reuses LidarSerializer)
 #endif
+    // Appended at the end so existing sensors keep their wire-type ids (purely additive).
+    ,std::pair<AInertialMeasurementUnitHighPrecision *, s11n::IMUSerializer> // high-precision IMU (reuses IMUSerializer)
   >;
 
 } // namespace sensor
