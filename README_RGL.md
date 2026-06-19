@@ -292,3 +292,27 @@ return-mode whitelist.
 CARLA itself still builds without the UDP extension. In that case the
 UDP-related features auto-disable at runtime with a warning log and the
 rest of the RGL pipeline (ROS 2 publish, Yield) is unaffected.
+
+## Phase 2 verification with tier4/nebula
+
+Once a shipping package is built and the UDP extension is in the
+loaded `libRobotecGPULidar.so`, run the Phase 2 end-to-end test to
+verify all eight supported LiDAR models against the production ROS 2
+driver `tier4/nebula`:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /path/to/colcon_workspace/install/setup.bash
+
+cd PythonAPI/rgl/tests
+python3 test_phase2_nebula_e2e.py
+```
+
+The test auto-launches CARLA, generates a per-model Nebula config
+YAML in `/tmp`, sequentially exercises one Nebula process per model,
+and prints a final `N/8 passed` summary. See
+[`Docs/rgl/phase2_nebula_e2e.md`](Docs/rgl/phase2_nebula_e2e.md) for
+prerequisites, validation indicators, return-mode mapping, and
+troubleshooting (including the HesaiPandarQT-specific
+`enable_hesai_udp_sequence` + `ensure_hesai_pandar_driver_compat`
+requirements).

@@ -145,11 +145,13 @@ all-eight-models smoke test, a VLP16 deep decode (Velodyne Legacy
 Format packet structure), and a HesaiPandar40P horizontal-start-angle
 end-to-end check.
 
-## tier4/nebula integration (Phase 2 and later)
+## tier4/nebula integration (Phase 2)
 
-End-to-end verification against the production ROS 2 driver is covered
-by Phase 2 / Phase 3, which live in separate spec / plan documents
-under `docs/superpowers/specs/`.
+End-to-end verification against the production ROS 2 driver
+`tier4/nebula` is implemented as Phase 2. See
+[`phase2_nebula_e2e.md`](phase2_nebula_e2e.md) for prerequisites,
+test invocation, per-model thresholds, return-mode notes, and the
+HesaiPandarQT-specific UDP flag requirements.
 
 ## Troubleshooting
 
