@@ -250,7 +250,7 @@ _PC2_TYPE = {
 
 def _pc2_to_numpy(msg):
     """Decode a sensor_msgs/PointCloud2 message into a dict containing
-    'xyz' (Nx3 float32), 'ring' (Nx1 int32), and 'intensity' (Nx1 float32).
+    'xyz' (Nx3 float32), 'ring' (N int32), and 'intensity' (N float32).
     Missing optional fields fall back to zero arrays."""
     import numpy as np
 
@@ -320,12 +320,15 @@ def validate_pointclouds(model_name, msgs):
 
     decoded = [_pc2_to_numpy(m) for m in msgs[:5]]
 
-    # Indicator 2: ring count
-    max_ring = max(
-        int(d["ring"].max()) for d in decoded if d["ring"].size
-    )
-    indicators["ring_count_exact"] = (max_ring + 1) == exp["rings"]
-    detail_ring = f"rings={max_ring + 1} (expected {exp['rings']})"
+    # Indicator 2: ring count (skip empty scans; if all empty, fail explicitly)
+    non_empty = [d for d in decoded if d["ring"].size]
+    if non_empty:
+        max_ring = max(int(d["ring"].max()) for d in non_empty)
+        indicators["ring_count_exact"] = (max_ring + 1) == exp["rings"]
+        detail_ring = f"rings={max_ring + 1} (expected {exp['rings']})"
+    else:
+        indicators["ring_count_exact"] = False
+        detail_ring = "rings=0 (all scans empty)"
 
     # Indicator 3: average points per scan
     avg_pts = sum(d["xyz"].shape[0] for d in decoded) / len(decoded)
