@@ -58,12 +58,15 @@ ALL_MODELS = [
 ]
 
 # (CARLA return_mode, Nebula return_mode) per model.
-# HesaiPandarQT's AWSIM whitelist (LidarUdpPublisher.cs::SupportedLidarsAndReturnModes)
-# does not include Strongest, so use First instead.
+# Velodyne uses Nebula's generic return_mode_from_string which recognises
+# only SingleFirst / SingleStrongest / SingleLast / Dual. Hesai uses
+# return_mode_from_string_hesai which is model-aware and accepts
+# Strongest / First / Last / Dual etc. HesaiPandarQT's AWSIM whitelist
+# excludes Strongest, so use First instead.
 RETURN_MODE_FOR_PHASE2 = {
-    "VelodyneVLP16":     ("strongest", "Strongest"),
-    "VelodyneVLP32C":    ("strongest", "Strongest"),
-    "VelodyneVLS128":    ("strongest", "Strongest"),
+    "VelodyneVLP16":     ("strongest", "SingleStrongest"),
+    "VelodyneVLP32C":    ("strongest", "SingleStrongest"),
+    "VelodyneVLS128":    ("strongest", "SingleStrongest"),
     "HesaiPandar40P":    ("strongest", "Strongest"),
     "HesaiPandarQT":     ("first",     "First"),
     "HesaiPandarXT32":   ("strongest", "Strongest"),
