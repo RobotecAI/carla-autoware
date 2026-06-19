@@ -203,6 +203,14 @@ def check_prereqs():
         issues.append(f"numpy not importable: {e}")
 
     try:
+        import yaml  # noqa: F401
+    except ImportError as e:
+        issues.append(
+            f"PyYAML not importable: {e}\n"
+            f"  Install via: pip3 install --user pyyaml"
+        )
+
+    try:
         result = subprocess.run(
             ["ros2", "pkg", "prefix", "nebula_ros"],
             capture_output=True, text=True, timeout=10,
@@ -367,6 +375,60 @@ def validate_pointclouds(model_name, msgs):
 
 
 # ----------------------------------------------------------------------------
+# Nebula config override generation
+# ----------------------------------------------------------------------------
+
+def _nebula_config_for_model(model_name, data_port, nebula_return_mode):
+    """Read Nebula's default per-model YAML, override the parameters that
+    matter for raw-UDP-from-simulation use, and write the result to /tmp.
+    Returns the absolute path of the generated config file.
+
+    Why: nebula_ros's *_launch_all_hw.xml propagates only `sensor_model`
+    and `launch_hw` to the node; everything else (host_ip, data_port,
+    return_mode, udp_only, setup_sensor, sensor_ip) is read from the
+    YAML file referenced by `config_file:=`. CLI args like
+    `return_mode:=Strongest` are silently ignored otherwise.
+    """
+    import yaml
+
+    # Locate Nebula's default config for the sensor model.
+    vendor = "velodyne" if model_name.startswith("Velodyne") else "hesai"
+    result = subprocess.run(
+        ["ros2", "pkg", "prefix", "nebula_ros"],
+        capture_output=True, text=True, timeout=10, check=True,
+    )
+    nebula_share = Path(result.stdout.strip()) / "share/nebula_ros"
+    base_yaml_path = (
+        nebula_share / "config/lidar" / vendor
+        / f"{NEBULA_MODEL[model_name]}.param.yaml"
+    )
+    if not base_yaml_path.exists():
+        raise RuntimeError(
+            f"Nebula base config not found: {base_yaml_path}"
+        )
+
+    with open(base_yaml_path) as f:
+        cfg = yaml.safe_load(f)
+
+    # Overlay our overrides. The YAML structure is {"/**": {"ros__parameters": {...}}}.
+    params = cfg["/**"]["ros__parameters"]
+    params["host_ip"] = DEST_IP
+    params["sensor_ip"] = DEST_IP  # accept UDP from loopback source IP
+    params["data_port"] = data_port
+    params["return_mode"] = nebula_return_mode
+    params["udp_only"] = True       # skip HTTP sensor setup
+    params["setup_sensor"] = False  # belt-and-suspenders
+    # launch_hw is propagated separately via the launch xml; we set true to
+    # ensure the UDP listener is created.
+    params["launch_hw"] = True
+
+    out_path = Path(f"/tmp/phase2_{model_name.lower()}.yaml")
+    with open(out_path, "w") as f:
+        yaml.safe_dump(cfg, f)
+    return out_path
+
+
+# ----------------------------------------------------------------------------
 # Per-model verification cycle
 # ----------------------------------------------------------------------------
 
@@ -384,21 +446,20 @@ def verify_model(world, model_name):
     udp_port = DEST_PORT_BASE + ALL_MODELS.index(model_name)
 
     # 1. Launch Nebula
+    # Generate per-model config YAML with our overrides. The launch xml
+    # only forwards sensor_model and launch_hw; every other parameter
+    # (host_ip, data_port, return_mode, udp_only, setup_sensor, sensor_ip)
+    # must come from the YAML referenced by config_file:=.
+    config_path = _nebula_config_for_model(
+        model_name, udp_port, nebula_mode)
+
     nebula_proc = subprocess.Popen(
         [
             "ros2", "launch", "nebula_ros",
             f"{vendor}_launch_all_hw.xml",
             f"sensor_model:={NEBULA_MODEL[model_name]}",
-            # launch_hw=true starts the UDP listener; udp_only=true skips
-            # the HTTP sensor configuration step that would otherwise hang
-            # on a simulated (non-physical) sensor. setup_sensor=false is
-            # belt-and-suspenders to avoid any setup-side calls.
             "launch_hw:=true",
-            "udp_only:=true",
-            "setup_sensor:=false",
-            f"return_mode:={nebula_mode}",
-            f"host_ip:={DEST_IP}",
-            f"data_port:={udp_port}",
+            f"config_file:={config_path}",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
