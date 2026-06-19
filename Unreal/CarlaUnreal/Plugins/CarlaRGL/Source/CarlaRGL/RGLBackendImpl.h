@@ -39,6 +39,7 @@ struct FRGLSession
     rgl_node_t Ue5ToRos2Node = nullptr;
     rgl_node_t FormatNode = nullptr;
     rgl_node_t Ros2PublishNode = nullptr;
+    rgl_node_t UdpPublishNode = nullptr;  // UDP raw packet publish (optional)
     rgl_node_t AngularNoiseRayNode = nullptr;
     rgl_node_t AngularNoiseHitpointNode = nullptr;
     rgl_node_t DistanceNoiseNode = nullptr;
@@ -61,12 +62,16 @@ struct FRGLSession
 
     // ---- ROS2 state ----
     bool bRos2Active = false;
+    bool bUdpActive = false;
 
     bool AllNodesValid() const
     {
         return UseRaysNode && SetRangeNode && RaysTransformNode && RaytraceNode &&
                CompactNode && ToSensorNode && YieldNode;
-        // FormatNode and Ros2PublishNode are optional (only when ROS2 topic is set)
+        // Optional nodes (not validated here):
+        //   FormatNode, Ros2PublishNode (only when ROS2 topic is set)
+        //   UdpPublishNode               (only when UDP is enabled and the
+        //                                 RGL UDP extension is present)
     }
 };
 

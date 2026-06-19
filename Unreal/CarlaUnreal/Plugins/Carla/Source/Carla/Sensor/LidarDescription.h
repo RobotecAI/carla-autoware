@@ -43,6 +43,13 @@ struct CARLA_API FLidarDescription
   UPROPERTY(EditAnywhere)
   float HorizontalFov = 360.0f;
 
+  /// Horizontal sweep start angle (degrees). Default 0 means symmetric sweep
+  /// centred around the forward axis (-HFOV/2 .. +HFOV/2). Non-zero shifts
+  /// the entire sweep window (e.g. -90 with HFOV=360 → sweep -90..+270 for
+  /// Hesai ROS driver coordinate compatibility).
+  UPROPERTY(EditAnywhere)
+  float HorizontalStartAngle = 0.0f;
+
   /// Attenuation Rate in the atmosphere in m^-1.
   UPROPERTY(EditAnywhere)
   float AtmospAttenRate = 0.004f;
@@ -154,4 +161,38 @@ struct CARLA_API FLidarDescription
   /// "first_last", "first_strongest", "first_second", "last_strongest",
   /// "strongest_second_strongest" (dual, requires beam_divergence > 0).
   FString ReturnMode;
+
+  // ============================================================================
+  // RGL UDP Raw Packet publish settings (AWSIM LidarUdpPublisher port)
+  // ============================================================================
+
+  /// LiDAR model name for UDP raw packet generation.
+  /// Valid values: "VelodyneVLP16", "VelodyneVLP32C", "VelodyneVLS128",
+  /// "HesaiPandar40P", "HesaiPandarQT", "HesaiPandarXT32",
+  /// "HesaiQT128C2X", "HesaiPandar128E4X".
+  /// Empty → C++ UDP branch lookup fails cleanly and UDP is disabled.
+  FString RglLidarModelName;
+
+  /// Toggle for UDP publishing. Combined with non-empty UdpDestIp.
+  bool UdpEnabled = false;
+
+  /// Source IP address for UDP packets (default "0.0.0.0").
+  FString UdpSourceIp;
+
+  /// Destination IP for UDP packets. Empty disables UDP regardless of UdpEnabled.
+  FString UdpDestIp;
+
+  /// Destination UDP port (default 2368, the Velodyne convention).
+  int32 UdpDestPort = 2368;
+
+  /// Hesai-specific: enable UDP sequence number field.
+  /// Forced ON for HesaiQT128C2X / HesaiPandar128E4X / HesaiPandarXT32.
+  bool UdpHesaiEnableUdpSequence = false;
+
+  /// Hesai-specific: enable up-close blockage detection (HesaiQT128C2X only).
+  bool UdpHesaiBlockageDetection = false;
+
+  /// Hesai-specific: ensure compatibility with Hesai Pandar ROS driver
+  /// quirks (only meaningful for HesaiPandarQT).
+  bool UdpHesaiPandarDriverCompat = false;
 };

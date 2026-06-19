@@ -1038,6 +1038,61 @@ void UActorBlueprintFunctionLibrary::MakeLidarDefinition(
     ReturnMode.RecommendedValues = { TEXT("first") };
     ReturnMode.bRestrictToRecommended = false;
 
+    FActorVariation HorizontalStartAngle;
+    HorizontalStartAngle.Id = TEXT("horizontal_start_angle");
+    HorizontalStartAngle.Type = EActorAttributeType::Float;
+    HorizontalStartAngle.RecommendedValues = { TEXT("0.0") };
+    HorizontalStartAngle.bRestrictToRecommended = false;
+
+    // RGL UDP Raw Packet attributes (AWSIM LidarUdpPublisher port)
+    FActorVariation RglLidarModelName;
+    RglLidarModelName.Id = TEXT("rgl_lidar_model_name");
+    RglLidarModelName.Type = EActorAttributeType::String;
+    RglLidarModelName.RecommendedValues = { TEXT("") };
+    RglLidarModelName.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpEnabled;
+    RglUdpEnabled.Id = TEXT("rgl_udp_enabled");
+    RglUdpEnabled.Type = EActorAttributeType::Bool;
+    RglUdpEnabled.RecommendedValues = { TEXT("false") };
+    RglUdpEnabled.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpSourceIp;
+    RglUdpSourceIp.Id = TEXT("rgl_udp_source_ip");
+    RglUdpSourceIp.Type = EActorAttributeType::String;
+    RglUdpSourceIp.RecommendedValues = { TEXT("0.0.0.0") };
+    RglUdpSourceIp.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpDestIp;
+    RglUdpDestIp.Id = TEXT("rgl_udp_dest_ip");
+    RglUdpDestIp.Type = EActorAttributeType::String;
+    RglUdpDestIp.RecommendedValues = { TEXT("") };
+    RglUdpDestIp.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpDestPort;
+    RglUdpDestPort.Id = TEXT("rgl_udp_dest_port");
+    RglUdpDestPort.Type = EActorAttributeType::Int;
+    RglUdpDestPort.RecommendedValues = { TEXT("2368") };
+    RglUdpDestPort.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpHesaiUdpSequence;
+    RglUdpHesaiUdpSequence.Id = TEXT("rgl_udp_hesai_enable_udp_sequence");
+    RglUdpHesaiUdpSequence.Type = EActorAttributeType::Bool;
+    RglUdpHesaiUdpSequence.RecommendedValues = { TEXT("false") };
+    RglUdpHesaiUdpSequence.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpHesaiBlockage;
+    RglUdpHesaiBlockage.Id = TEXT("rgl_udp_hesai_blockage_detection");
+    RglUdpHesaiBlockage.Type = EActorAttributeType::Bool;
+    RglUdpHesaiBlockage.RecommendedValues = { TEXT("false") };
+    RglUdpHesaiBlockage.bRestrictToRecommended = false;
+
+    FActorVariation RglUdpHesaiPandarDriver;
+    RglUdpHesaiPandarDriver.Id = TEXT("rgl_udp_hesai_pandar_driver_compat");
+    RglUdpHesaiPandarDriver.Type = EActorAttributeType::Bool;
+    RglUdpHesaiPandarDriver.RecommendedValues = { TEXT("false") };
+    RglUdpHesaiPandarDriver.bRestrictToRecommended = false;
+
     Definition.Variations.Append({
       Channels,
       Range,
@@ -1083,7 +1138,16 @@ void UActorBlueprintFunctionLibrary::MakeLidarDefinition(
       NoiseAngularAxis,
       BeamDivergenceH,
       BeamDivergenceV,
-      ReturnMode});
+      ReturnMode,
+      HorizontalStartAngle,
+      RglLidarModelName,
+      RglUdpEnabled,
+      RglUdpSourceIp,
+      RglUdpDestIp,
+      RglUdpDestPort,
+      RglUdpHesaiUdpSequence,
+      RglUdpHesaiBlockage,
+      RglUdpHesaiPandarDriver});
   }
   else {
     DEBUG_ASSERT(false);
@@ -1974,6 +2038,26 @@ void UActorBlueprintFunctionLibrary::SetLidar(
   // Return mode
   Lidar.ReturnMode = RetrieveActorAttributeToString(
       "return_mode", Description.Variations, TEXT("first"));
+  // Horizontal sweep start angle (used by Hesai ROS driver compat preset)
+  Lidar.HorizontalStartAngle =
+      RetrieveActorAttributeToFloat("horizontal_start_angle", Description.Variations, 0.0f);
+  // RGL UDP Raw Packet attributes
+  Lidar.RglLidarModelName = RetrieveActorAttributeToString(
+      "rgl_lidar_model_name", Description.Variations, TEXT(""));
+  Lidar.UdpEnabled = RetrieveActorAttributeToBool(
+      "rgl_udp_enabled", Description.Variations, false);
+  Lidar.UdpSourceIp = RetrieveActorAttributeToString(
+      "rgl_udp_source_ip", Description.Variations, TEXT("0.0.0.0"));
+  Lidar.UdpDestIp = RetrieveActorAttributeToString(
+      "rgl_udp_dest_ip", Description.Variations, TEXT(""));
+  Lidar.UdpDestPort = RetrieveActorAttributeToInt(
+      "rgl_udp_dest_port", Description.Variations, 2368);
+  Lidar.UdpHesaiEnableUdpSequence = RetrieveActorAttributeToBool(
+      "rgl_udp_hesai_enable_udp_sequence", Description.Variations, false);
+  Lidar.UdpHesaiBlockageDetection = RetrieveActorAttributeToBool(
+      "rgl_udp_hesai_blockage_detection", Description.Variations, false);
+  Lidar.UdpHesaiPandarDriverCompat = RetrieveActorAttributeToBool(
+      "rgl_udp_hesai_pandar_driver_compat", Description.Variations, false);
 }
 
 void UActorBlueprintFunctionLibrary::SetGnss(

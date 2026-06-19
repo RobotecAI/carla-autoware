@@ -7,6 +7,7 @@
 #include "RGLBackendImpl.h"
 #include "RGLSceneManager.h"
 #include "RGLCoordinateUtils.h"
+#include "RGLUdpExtensionShim.h"
 
 #include <util/disable-ue4-macros.h>
 #include <rgl/api/core.h>
@@ -74,6 +75,62 @@ static const rgl_field_t GFormatXYZIRCAEDT[] = {
     RGL_FIELD_AZIMUTH_F32, RGL_FIELD_ELEVATION_F32, RGL_FIELD_DISTANCE_F32,
     RGL_FIELD_TIME_STAMP_U32
 };
+
+// ============================================================================
+// UDP Raw Packet support: model name -> RGL enum mapping + return mode whitelist.
+// Mirrors AWSIM's UnityToRGLLidarModelsMapping and SupportedLidarsAndReturnModes
+// from Assets/RGLUnityPlugin/Scripts/LidarUdpPublisher.cs.
+// ============================================================================
+
+static const TMap<FString, rgl_lidar_model_t> GLidarModelMap = {
+    {TEXT("VelodyneVLP16"),     RGL_VELODYNE_VLP16},
+    {TEXT("VelodyneVLP32C"),    RGL_VELODYNE_VLP32C},
+    {TEXT("VelodyneVLS128"),    RGL_VELODYNE_VLS128},
+    {TEXT("HesaiPandar40P"),    RGL_HESAI_PANDAR_40P},
+    {TEXT("HesaiPandarQT"),     RGL_HESAI_PANDAR_QT64},
+    {TEXT("HesaiPandarXT32"),   RGL_HESAI_PANDAR_XT32},
+    {TEXT("HesaiQT128C2X"),     RGL_HESAI_QT128C2X},
+    {TEXT("HesaiPandar128E4X"), RGL_HESAI_PANDAR_128E4X},
+};
+
+// Return mode whitelist per LiDAR model. Names match the strings accepted
+// by FLidarDescription::ReturnMode (lower-case).
+static bool IsReturnModeSupportedForModel(const FString& Model, const FString& Mode)
+{
+    static const TMap<FString, TSet<FString>> Whitelist = {
+        {TEXT("VelodyneVLP16"),
+         {TEXT("strongest"), TEXT("last"), TEXT("last_strongest")}},
+        {TEXT("VelodyneVLP32C"),
+         {TEXT("strongest"), TEXT("last"), TEXT("last_strongest")}},
+        {TEXT("VelodyneVLS128"),
+         {TEXT("strongest"), TEXT("last"), TEXT("last_strongest")}},
+        {TEXT("HesaiPandar40P"),
+         {TEXT("strongest"), TEXT("last"), TEXT("last_strongest")}},
+        {TEXT("HesaiPandarQT"),
+         {TEXT("first"), TEXT("last"), TEXT("first_last")}},
+        {TEXT("HesaiQT128C2X"),
+         {TEXT("first"), TEXT("second"), TEXT("strongest"), TEXT("last"),
+          TEXT("last_strongest"), TEXT("first_last"), TEXT("first_strongest"),
+          TEXT("strongest_second_strongest"), TEXT("first_second")}},
+        {TEXT("HesaiPandar128E4X"),
+         {TEXT("first"), TEXT("strongest"), TEXT("last"),
+          TEXT("last_strongest"), TEXT("first_last"), TEXT("first_strongest")}},
+        {TEXT("HesaiPandarXT32"),
+         {TEXT("strongest"), TEXT("last"), TEXT("last_strongest")}},
+    };
+    // Empty ReturnMode means "first" by historical default — also acceptable
+    // when whitelist contains "first".
+    const FString Effective = Mode.IsEmpty() ? TEXT("first") : Mode.ToLower();
+    const TSet<FString>* Set = Whitelist.Find(Model);
+    return Set && Set->Contains(Effective);
+}
+
+static bool IsVelodyneModel(rgl_lidar_model_t M)
+{
+    return M == RGL_VELODYNE_VLP16
+        || M == RGL_VELODYNE_VLP32C
+        || M == RGL_VELODYNE_VLS128;
+}
 
 static const FRGLPointCloudFormat GPointCloudFormats[] = {
     {"minimal",         GFormatMinimal,     3},
@@ -246,6 +303,126 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
                      "history:", HistoryStr, "depth:", HistoryDepth);
     }
 
+    // ============================================================================
+    // (Optional) UDP Raw Packet publishing branch — AWSIM LidarUdpPublisher port
+    // ============================================================================
+    const bool bUdpRequested = Desc.UdpEnabled && !Desc.UdpDestIp.IsEmpty();
+
+    if (bUdpRequested)
+    {
+        // 1. Extension availability (graceful fallback when missing in .so).
+        int32_t UdpAvailable = 0;
+        rgl_get_extension_info(RGL_EXTENSION_UDP, &UdpAvailable);
+        if (!UdpAvailable)
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("RGLBackendImpl: UDP publishing requested but RGL_EXTENSION_UDP "
+                     "not present in libRobotecGPULidar.so. Rebuild RGL with "
+                     "RGL_BUILD_UDP_EXTENSION=ON. Skipping UDP node."));
+        }
+        else if (Desc.RglLidarModelName.IsEmpty())
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("RGLBackendImpl: UDP publishing requested but "
+                     "rgl_lidar_model_name is empty. Skipping UDP node."));
+        }
+        else
+        {
+            const rgl_lidar_model_t* FoundModel = GLidarModelMap.Find(Desc.RglLidarModelName);
+            if (!FoundModel)
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("RGLBackendImpl: Unknown rgl_lidar_model_name '%s'. "
+                         "UDP disabled."), *Desc.RglLidarModelName);
+            }
+            else if (FMath::Abs(Desc.HorizontalFov - 360.0f) > 0.01f)
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("RGLBackendImpl: UDP requires HorizontalFov=360.0 but "
+                         "is %.2f. UDP disabled."), Desc.HorizontalFov);
+            }
+            else if (!IsReturnModeSupportedForModel(Desc.RglLidarModelName, Desc.ReturnMode))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("RGLBackendImpl: Return mode '%s' not supported by "
+                         "model '%s' for UDP. UDP disabled."),
+                    *Desc.ReturnMode, *Desc.RglLidarModelName);
+            }
+            else
+            {
+                // Velodyne legacy packet format saturates at 262.14 m. Continue with warning.
+                if (IsVelodyneModel(*FoundModel)
+                    && Desc.Range * RGLCoord::UE_TO_RGL > 262.14f)
+                {
+                    UE_LOG(LogTemp, Warning,
+                        TEXT("RGLBackendImpl: Range %.2fm exceeds Velodyne Legacy "
+                             "Format limit 262.14m. Encoded distance may saturate."),
+                        Desc.Range * RGLCoord::UE_TO_RGL);
+                }
+
+                // Compute udp_options bitmask with AWSIM-style model-specific forcing.
+                uint32_t UdpOptions = RGL_UDP_NO_ADDITIONAL_OPTIONS;
+                bool EffEnableSeq = Desc.UdpHesaiEnableUdpSequence;
+                bool EffBlockage  = Desc.UdpHesaiBlockageDetection;
+                bool EffPandarDrv = Desc.UdpHesaiPandarDriverCompat;
+
+                const FString& M = Desc.RglLidarModelName;
+                if (M == TEXT("HesaiQT128C2X")
+                    || M == TEXT("HesaiPandar128E4X")
+                    || M == TEXT("HesaiPandarXT32"))
+                {
+                    if (!EffEnableSeq)
+                    {
+                        UE_LOG(LogTemp, Log,
+                            TEXT("RGLBackendImpl: enable_hesai_udp_sequence forced ON for '%s'"),
+                            *M);
+                        EffEnableSeq = true;
+                    }
+                }
+                if (M != TEXT("HesaiQT128C2X") && EffBlockage)
+                {
+                    UE_LOG(LogTemp, Warning,
+                        TEXT("RGLBackendImpl: blockage_detection valid only for "
+                             "HesaiQT128C2X. Disabled for '%s'."), *M);
+                    EffBlockage = false;
+                }
+                const bool EffPandarDrvActive = (M == TEXT("HesaiPandarQT")) && EffPandarDrv;
+
+                if (EffEnableSeq)      UdpOptions |= RGL_UDP_ENABLE_HESAI_UDP_SEQUENCE;
+                if (EffBlockage)       UdpOptions |= RGL_UDP_UP_CLOSE_BLOCKAGE_DETECTION;
+                if (EffPandarDrvActive) UdpOptions |= RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER;
+
+                const FString EffSrcIp = Desc.UdpSourceIp.IsEmpty()
+                    ? TEXT("0.0.0.0") : Desc.UdpSourceIp;
+
+                rgl_status_t S = rgl_node_points_udp_publish(
+                    &Session->UdpPublishNode,
+                    *FoundModel,
+                    static_cast<rgl_udp_options_t>(UdpOptions),
+                    TCHAR_TO_UTF8(*EffSrcIp),
+                    TCHAR_TO_UTF8(*Desc.UdpDestIp),
+                    Desc.UdpDestPort);
+
+                if (S != RGL_SUCCESS)
+                {
+                    const char* Err = nullptr;
+                    rgl_get_last_error_string(&Err);
+                    UE_LOG(LogTemp, Warning,
+                        TEXT("RGLBackendImpl: rgl_node_points_udp_publish failed: %s"),
+                        Err ? *FString(UTF8_TO_TCHAR(Err)) : TEXT("unknown"));
+                    Session->UdpPublishNode = nullptr;
+                }
+                else
+                {
+                    Session->bUdpActive = true;
+                    UE_LOG(LogTemp, Log,
+                        TEXT("RGLBackendImpl: UDP publish enabled: model=%s dest=%s:%d opts=0x%08X"),
+                        *M, *Desc.UdpDestIp, Desc.UdpDestPort, UdpOptions);
+                }
+            }
+        }
+    }
+
     // --- Noise nodes (conditional) ---
     const FString& AngularType = Desc.NoiseAngularType;
     const float AngStdDevRad = FMath::DegreesToRadians(Desc.NoiseAngularStdDev);
@@ -373,6 +550,13 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
         RGL_CHECK(rgl_graph_node_add_child(PostRaytraceNode, Session->DistanceNoiseNode));
         PostRaytraceNode = Session->DistanceNoiseNode;
     }
+    // UDP branch consumes the non-compacted, ray-ordered output (slot order
+    // matches firing sequence). DISTANCE is computed at Raytrace and is
+    // invariant under transforms, so frame choice doesn't matter for payload.
+    if (Session->bUdpActive && Session->UdpPublishNode)
+    {
+        RGL_CHECK(rgl_graph_node_add_child(PostRaytraceNode, Session->UdpPublishNode));
+    }
     RGL_CHECK(rgl_graph_node_add_child(PostRaytraceNode, Session->CompactNode));
 
     RGL_CHECK(rgl_graph_node_add_child(Session->CompactNode, Session->ToSensorNode));
@@ -434,6 +618,8 @@ void FRGLBackendImpl::DestroySession(FRGLSessionHandle Handle)
     Session->CompactNode = nullptr;
     Session->ToSensorNode = nullptr;
     Session->YieldNode = nullptr;
+    Session->UdpPublishNode = nullptr;
+    Session->bUdpActive = false;
 
     delete Session;
 }
@@ -585,6 +771,14 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
         FMemory::Memset(Session->RayMask.GetData(), 1, TotalRays);
     }
 
+    // Compute sweep window offset. When HorizontalStartAngle is non-zero,
+    // shift the centred [-HFOV/2, +HFOV/2] sweep so that it spans
+    // [HorizontalStartAngle, HorizontalStartAngle + HFOV] instead.
+    const float SweepCenterOffset =
+        (Desc.HorizontalStartAngle != 0.0f)
+            ? (Desc.HorizontalStartAngle + Desc.HorizontalFov / 2.0f)
+            : 0.0f;
+
     int32 RayIndex = 0;
     for (uint32 ch = 0; ch < ChannelCount; ++ch)
     {
@@ -599,10 +793,13 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
 
         for (uint32 pt = 0; pt < PointsToScanWithOneLaser; ++pt)
         {
-            // Center angle range around 0 (same as CPU ray_cast: -HorizontalFov/2 offset)
-            const float HorizAngle = std::fmod(
-                InOutHorizontalAngle + static_cast<float>(pt) * AngleDistanceOfLaserMeasure,
-                Desc.HorizontalFov) - Desc.HorizontalFov / 2.0f + ChHorizOffset + ChStepOffset;
+            const float HorizAngle =
+                std::fmod(
+                    InOutHorizontalAngle + static_cast<float>(pt) * AngleDistanceOfLaserMeasure,
+                    Desc.HorizontalFov)
+                - Desc.HorizontalFov / 2.0f
+                + SweepCenterOffset
+                + ChHorizOffset + ChStepOffset;
 
             Session->RayTransforms[RayIndex] = RGLCoord::FromPitchYaw(
                 ChVertAngle,

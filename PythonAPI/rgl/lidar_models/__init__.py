@@ -142,7 +142,14 @@ def list_models():
               f"H-FOV={m['horizontal_fov']}")
 
 
-def apply_preset(blueprint, model_name, apply_noise=True, apply_beam_divergence=False):
+def apply_preset(
+    blueprint,
+    model_name,
+    apply_noise=True,
+    apply_beam_divergence=False,
+    hesai_ros_driver_compat=False,
+    udp_publish=None,
+):
     """Apply a LiDAR preset to a CARLA blueprint.
 
     Args:
@@ -152,10 +159,46 @@ def apply_preset(blueprint, model_name, apply_noise=True, apply_beam_divergence=
             Set to False for deterministic (noise-free) operation.
         apply_beam_divergence: if True, apply preset beam divergence params.
             Default False (58x ray cost when enabled).
+        hesai_ros_driver_compat: if True and model is Hesai, set the sweep
+            start angle to -90.0 so the LiDAR scan aligns with the Hesai ROS
+            driver azimuth convention (sweep -90..+270). For non-Hesai models
+            this argument is ignored with a warnings.warn().
+        udp_publish: dict configuring AWSIM-style UDP Raw Packet publishing.
+            None (default) disables UDP. When provided, supported keys:
+              dest_ip                                  (str, required to enable)
+              dest_port                                (int,  default 2368)
+              source_ip                                (str,  default "0.0.0.0")
+              enable_hesai_udp_sequence                (bool, default False)
+              enable_hesai_blockage_detection          (bool, default False)
+              ensure_hesai_pandar_driver_compat        (bool, default False)
     """
     if model_name not in MODEL_REGISTRY:
         available = ", ".join(sorted(MODEL_REGISTRY.keys()))
         raise ValueError(f"Unknown model '{model_name}'. Available: {available}")
+
+    import warnings as _warnings
+
+    # Always propagate the model name so the C++ side can map to RGL enum
+    # (cheap; harmless when UDP is disabled).
+    try:
+        blueprint.set_attribute("rgl_lidar_model_name", model_name)
+    except RuntimeError:
+        pass  # attribute not available in older builds
+
+    # Hesai ROS driver coordinate compatibility (sets sweep start to -90 deg).
+    if hesai_ros_driver_compat:
+        is_hesai = model_name.startswith("Hesai")
+        if is_hesai:
+            try:
+                blueprint.set_attribute("horizontal_start_angle", "-90.0")
+            except RuntimeError:
+                pass
+        else:
+            _warnings.warn(
+                f"hesai_ros_driver_compat=True is ignored for non-Hesai "
+                f"model '{model_name}'",
+                stacklevel=2,
+            )
 
     m = MODEL_REGISTRY[model_name]
 
@@ -216,6 +259,36 @@ def apply_preset(blueprint, model_name, apply_noise=True, apply_beam_divergence=
         bd = BEAM_DIVERGENCE_REGISTRY[model_name]
         _try_set("beam_divergence_h", str(bd["horizontal"]))
         _try_set("beam_divergence_v", str(bd["vertical"]))
+
+    # UDP Raw Packet publishing (AWSIM LidarUdpPublisher port)
+    if udp_publish is not None:
+        dest_ip = udp_publish.get("dest_ip", "")
+        if dest_ip:
+            def _set_udp(attr, val):
+                try:
+                    blueprint.set_attribute(attr, val)
+                except RuntimeError:
+                    _warnings.warn(
+                        f"UDP attribute '{attr}' unavailable in this build; "
+                        f"UDP publishing will be inactive.",
+                        stacklevel=2,
+                    )
+
+            _set_udp("rgl_udp_enabled", "true")
+            _set_udp("rgl_udp_dest_ip", dest_ip)
+            _set_udp("rgl_udp_dest_port",
+                     str(udp_publish.get("dest_port", 2368)))
+            _set_udp("rgl_udp_source_ip",
+                     udp_publish.get("source_ip", "0.0.0.0"))
+            _set_udp("rgl_udp_hesai_enable_udp_sequence",
+                     "true" if udp_publish.get("enable_hesai_udp_sequence",
+                                               False) else "false")
+            _set_udp("rgl_udp_hesai_blockage_detection",
+                     "true" if udp_publish.get("enable_hesai_blockage_detection",
+                                               False) else "false")
+            _set_udp("rgl_udp_hesai_pandar_driver_compat",
+                     "true" if udp_publish.get("ensure_hesai_pandar_driver_compat",
+                                               False) else "false")
 
 
 def set_azimuth_fov(blueprint, sections):
