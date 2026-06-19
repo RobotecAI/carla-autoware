@@ -389,7 +389,13 @@ def verify_model(world, model_name):
             "ros2", "launch", "nebula_ros",
             f"{vendor}_launch_all_hw.xml",
             f"sensor_model:={NEBULA_MODEL[model_name]}",
-            "launch_hw:=false",
+            # launch_hw=true starts the UDP listener; udp_only=true skips
+            # the HTTP sensor configuration step that would otherwise hang
+            # on a simulated (non-physical) sensor. setup_sensor=false is
+            # belt-and-suspenders to avoid any setup-side calls.
+            "launch_hw:=true",
+            "udp_only:=true",
+            "setup_sensor:=false",
             f"return_mode:={nebula_mode}",
             f"host_ip:={DEST_IP}",
             f"data_port:={udp_port}",
