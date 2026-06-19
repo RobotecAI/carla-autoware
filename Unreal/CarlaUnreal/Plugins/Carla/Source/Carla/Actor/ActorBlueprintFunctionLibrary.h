@@ -102,6 +102,10 @@ public:
 
   static FActorDefinition MakeIMUDefinition();
 
+  /// Creates a definition for the high-precision IMU sensor
+  /// ("sensor.other.imu_highprecision"). Same attributes as the standard IMU.
+  static FActorDefinition MakeIMUHighPrecisionDefinition();
+
   UFUNCTION(Category = "Carla Actor", BlueprintCallable)
   static void MakeIMUDefinition(
       bool &Success,

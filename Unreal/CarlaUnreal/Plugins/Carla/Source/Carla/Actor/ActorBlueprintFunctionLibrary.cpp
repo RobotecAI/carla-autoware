@@ -549,11 +549,15 @@ FActorDefinition UActorBlueprintFunctionLibrary::MakeIMUDefinition()
   return Definition;
 }
 
-void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
+// File-local: builds an IMU-style definition for the given blueprint type leaf
+// (e.g. "imu" or "imu_highprecision"). Both the standard and high-precision IMU
+// share identical attributes, so they share this builder.
+static void BuildIMUDefinition(
     bool &Success,
-    FActorDefinition &Definition)
+    FActorDefinition &Definition,
+    const FString &TypeLeaf)
 {
-  FillIdAndTags(Definition, TEXT("sensor"), TEXT("other"), TEXT("imu"));
+  FillIdAndTags(Definition, TEXT("sensor"), TEXT("other"), TypeLeaf);
   AddVariationsForSensor(Definition);
 
   // - Noise seed --------------------------------
@@ -564,19 +568,16 @@ void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
   NoiseSeed.bRestrictToRecommended = false;
 
   // - Accelerometer Standard Deviation ----------
-  // X Component
   FActorVariation StdDevAccelX;
   StdDevAccelX.Id = TEXT("noise_accel_stddev_x");
   StdDevAccelX.Type = EActorAttributeType::Float;
   StdDevAccelX.RecommendedValues = { TEXT("0.0") };
   StdDevAccelX.bRestrictToRecommended = false;
-  // Y Component
   FActorVariation StdDevAccelY;
   StdDevAccelY.Id = TEXT("noise_accel_stddev_y");
   StdDevAccelY.Type = EActorAttributeType::Float;
   StdDevAccelY.RecommendedValues = { TEXT("0.0") };
   StdDevAccelY.bRestrictToRecommended = false;
-  // Z Component
   FActorVariation StdDevAccelZ;
   StdDevAccelZ.Id = TEXT("noise_accel_stddev_z");
   StdDevAccelZ.Type = EActorAttributeType::Float;
@@ -584,19 +585,16 @@ void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
   StdDevAccelZ.bRestrictToRecommended = false;
 
   // - Gyroscope Standard Deviation --------------
-  // X Component
   FActorVariation StdDevGyroX;
   StdDevGyroX.Id = TEXT("noise_gyro_stddev_x");
   StdDevGyroX.Type = EActorAttributeType::Float;
   StdDevGyroX.RecommendedValues = { TEXT("0.0") };
   StdDevGyroX.bRestrictToRecommended = false;
-  // Y Component
   FActorVariation StdDevGyroY;
   StdDevGyroY.Id = TEXT("noise_gyro_stddev_y");
   StdDevGyroY.Type = EActorAttributeType::Float;
   StdDevGyroY.RecommendedValues = { TEXT("0.0") };
   StdDevGyroY.bRestrictToRecommended = false;
-  // Z Component
   FActorVariation StdDevGyroZ;
   StdDevGyroZ.Id = TEXT("noise_gyro_stddev_z");
   StdDevGyroZ.Type = EActorAttributeType::Float;
@@ -604,19 +602,16 @@ void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
   StdDevGyroZ.bRestrictToRecommended = false;
 
   // - Gyroscope Bias ----------------------------
-  // X Component
   FActorVariation BiasGyroX;
   BiasGyroX.Id = TEXT("noise_gyro_bias_x");
   BiasGyroX.Type = EActorAttributeType::Float;
   BiasGyroX.RecommendedValues = { TEXT("0.0") };
   BiasGyroX.bRestrictToRecommended = false;
-  // Y Component
   FActorVariation BiasGyroY;
   BiasGyroY.Id = TEXT("noise_gyro_bias_y");
   BiasGyroY.Type = EActorAttributeType::Float;
   BiasGyroY.RecommendedValues = { TEXT("0.0") };
   BiasGyroY.bRestrictToRecommended = false;
-  // Z Component
   FActorVariation BiasGyroZ;
   BiasGyroZ.Id = TEXT("noise_gyro_bias_z");
   BiasGyroZ.Type = EActorAttributeType::Float;
@@ -635,7 +630,23 @@ void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
     BiasGyroY,
     BiasGyroZ});
 
-  Success = CheckActorDefinition(Definition);
+  Success = UActorBlueprintFunctionLibrary::CheckActorDefinition(Definition);
+}
+
+void UActorBlueprintFunctionLibrary::MakeIMUDefinition(
+    bool &Success,
+    FActorDefinition &Definition)
+{
+  BuildIMUDefinition(Success, Definition, TEXT("imu"));
+}
+
+FActorDefinition UActorBlueprintFunctionLibrary::MakeIMUHighPrecisionDefinition()
+{
+  FActorDefinition Definition;
+  bool Success = false;
+  BuildIMUDefinition(Success, Definition, TEXT("imu_highprecision"));
+  check(Success);
+  return Definition;
 }
 
 FActorDefinition UActorBlueprintFunctionLibrary::MakeRadarDefinition()

@@ -46,7 +46,7 @@ public:
   carla::geom::Vector3D ComputeAccelerometer(const float CurrentTime);
 
   /// Gyroscope: measures angular velocity in rad/sec
-  carla::geom::Vector3D ComputeGyroscope();
+  virtual carla::geom::Vector3D ComputeGyroscope();
 
   /// Magnetometer: orientation with respect to the North in rad
   float ComputeCompass();
