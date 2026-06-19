@@ -78,12 +78,27 @@ def recv_packets(sock, duration_sec):
     return packets
 
 
+# Models whose UDP raw packet format whitelist excludes "first":
+# Velodyne (Legacy Packet Format) and Hesai Pandar40P/XT32 require
+# strongest/last/last_strongest. CARLA's default return_mode is "first",
+# which would otherwise cause the C++ backend to reject UDP for these
+# models. Hesai QT128C2X / Pandar128E4X / PandarQT accept "first" natively.
+_NO_FIRST_MODELS = {
+    "VelodyneVLP16", "VelodyneVLP32C", "VelodyneVLS128",
+    "HesaiPandar40P", "HesaiPandarXT32",
+}
+
+
 def spawn_sensor(world, preset_name, port, extra_kwargs=None):
     bp = world.get_blueprint_library().find("sensor.lidar.rgl")
     kwargs = {"udp_publish": {"dest_ip": DEST_IP, "dest_port": port}}
     if extra_kwargs:
         kwargs.update(extra_kwargs)
     apply_preset(bp, preset_name, **kwargs)
+    # Override default return_mode for models that do not accept "first"
+    # under the UDP whitelist. Tests assume the simplest valid mode.
+    if preset_name in _NO_FIRST_MODELS:
+        bp.set_attribute("return_mode", "strongest")
     spawn_point = world.get_map().get_spawn_points()[0]
     return world.spawn_actor(bp, spawn_point)
 
@@ -240,10 +255,11 @@ def test_hesai_hfov_start_offset(world):
                      hesai_ros_driver_compat=True,
                      udp_publish={"dest_ip": DEST_IP, "dest_port": port,
                                   "ensure_hesai_pandar_driver_compat": True})
+        # HesaiPandar40P UDP whitelist requires strongest/last/last_strongest.
+        # See _NO_FIRST_MODELS in spawn_sensor() for rationale.
+        bp.set_attribute("return_mode", "strongest")
         start_attr = bp.get_attribute("horizontal_start_angle")
-        # Blueprint attributes expose their current value via as_str() / .recommended_values
-        start_val = float(start_attr.as_str() if hasattr(start_attr, "as_str")
-                          else start_attr.recommended_values[0])
+        start_val = start_attr.as_float()
         assert start_val == -90.0, \
             f"horizontal_start_angle should be -90 after hesai_ros_driver_compat, got {start_val}"
         spawn_point = world.get_map().get_spawn_points()[0]
