@@ -308,11 +308,6 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
     // ============================================================================
     const bool bUdpRequested = Desc.UdpEnabled && !Desc.UdpDestIp.IsEmpty();
 
-    rgl_lidar_model_t SelectedUdpModel = RGL_VELODYNE_VLP16;  // arbitrary default; only used when bUdpActive
-    uint32_t SelectedUdpOptions = 0;
-    (void)SelectedUdpModel;
-    (void)SelectedUdpOptions;
-
     if (bUdpRequested)
     {
         // 1. Extension availability (graceful fallback when missing in .so).
@@ -420,8 +415,6 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
                 else
                 {
                     Session->bUdpActive = true;
-                    SelectedUdpModel = *FoundModel;
-                    SelectedUdpOptions = UdpOptions;
                     UE_LOG(LogTemp, Log,
                         TEXT("RGLBackendImpl: UDP publish enabled: model=%s dest=%s:%d opts=0x%08X"),
                         *M, *Desc.UdpDestIp, Desc.UdpDestPort, UdpOptions);
