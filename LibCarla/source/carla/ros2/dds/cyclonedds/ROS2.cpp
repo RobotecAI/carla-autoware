@@ -1190,17 +1190,62 @@ void ROS2::ProcessDataFromStatusSensor(
   }
 
   // Turn indicators
-  if (!is_left_blinker_on && !is_right_blinker_on) {
-    _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::OFF);
-  } else if (is_left_blinker_on && !is_right_blinker_on) {
-    _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::LEFT);
-  } else if (is_right_blinker_on && !is_left_blinker_on) {
-    _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::RIGHT);
-  } else {
-    log_error("Both left and right blinkers are on. This should not happen!");
+  //
+  // CARLA does not actuate the ego's blinker from Autoware's turn_indicators_cmd
+  // (AutowareController only reads the command), so turn_mask stays OFF and the
+  // status would be permanently DISABLE. The Autoware planner consumes
+  // turn_indicators_status as an input, so a stuck-DISABLE status starves it of
+  // turn / lane-change context (the vehicle then fails to turn into the correct
+  // lane and never commits lane changes). Echo the command back as status while
+  // Autoware is driving, and fall back to the vehicle light state only before any
+  // command has been received.
+  bool turn_indicators_set_from_command = false;
+  if (_autoware_controller) {
+    switch (_autoware_controller->GetTurnIndicatorCommand()) {
+      case 2:  // TurnIndicatorsCommand::ENABLE_LEFT
+        _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::LEFT);
+        turn_indicators_set_from_command = true;
+        break;
+      case 3:  // TurnIndicatorsCommand::ENABLE_RIGHT
+        _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::RIGHT);
+        turn_indicators_set_from_command = true;
+        break;
+      case 1:  // TurnIndicatorsCommand::DISABLE
+        _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::OFF);
+        turn_indicators_set_from_command = true;
+        break;
+      default: // 0 == NO_COMMAND / nothing received yet -> fall back below
+        break;
+    }
+  }
+  if (!turn_indicators_set_from_command) {
+    if (!is_left_blinker_on && !is_right_blinker_on) {
+      _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::OFF);
+    } else if (is_left_blinker_on && !is_right_blinker_on) {
+      _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::LEFT);
+    } else if (is_right_blinker_on && !is_left_blinker_on) {
+      _autoware_publisher->SetTurnIndicators(TurnIndicatorsStatus::RIGHT);
+    } else {
+      log_error("Both left and right blinkers are on. This should not happen!");
+    }
   }
 
-  _autoware_publisher->SetHazardLights(is_hazard_lights_on);
+  // Hazard lights: same rationale as turn indicators -- echo the Autoware command
+  // back as status; fall back to the vehicle light state before any command.
+  bool hazard_on = is_hazard_lights_on;
+  if (_autoware_controller) {
+    switch (_autoware_controller->GetHazardLightsCommand()) {
+      case 2:  // HazardLightsCommand::ENABLE
+        hazard_on = true;
+        break;
+      case 1:  // HazardLightsCommand::DISABLE
+        hazard_on = false;
+        break;
+      default: // 0 == NO_COMMAND -> keep light-state fallback
+        break;
+    }
+  }
+  _autoware_publisher->SetHazardLights(hazard_on);
 
   _autoware_publisher->Publish(_seconds, _nanoseconds);
 

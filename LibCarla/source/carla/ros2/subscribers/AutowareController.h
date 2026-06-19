@@ -21,6 +21,13 @@ public:
   VehicleAccelerationControl GetControl();
   void* GetVehicle();
 
+  // Last turn-indicator / hazard command received from Autoware (raw message enum
+  // value; 0 == NO_COMMAND / nothing received yet). CARLA does not actuate the
+  // ego blinker from these commands, so they are echoed back as vehicle status to
+  // keep the Autoware feedback loop closed (the planner consumes the status).
+  uint8_t GetTurnIndicatorCommand() const;
+  uint8_t GetHazardLightsCommand() const;
+
 private:
   class Implementation;
   std::shared_ptr<Implementation> _impl;

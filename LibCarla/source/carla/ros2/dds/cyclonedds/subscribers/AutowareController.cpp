@@ -46,6 +46,14 @@ struct AutowareSubReader {
     return data;
   }
 
+  // Read the last received message without clearing the "changed" flag, so a
+  // separate consumer (e.g. status echo) can sample it independently of the
+  // control loop's HasNewMessage()/GetMessage() handshake.
+  Message PeekMessage() {
+    std::lock_guard<std::mutex> lock(mutex);
+    return data;
+  }
+
   void OnData(const Message& msg) {
     std::lock_guard<std::mutex> lock(mutex);
     data = msg;
@@ -260,6 +268,14 @@ VehicleAccelerationControl AutowareController::GetControl() {
 
 void* AutowareController::GetVehicle() {
   return _impl->_vehicle;
+}
+
+uint8_t AutowareController::GetTurnIndicatorCommand() const {
+  return _impl->_turn_indicator_subscriber.PeekMessage().command;
+}
+
+uint8_t AutowareController::GetHazardLightsCommand() const {
+  return _impl->_hazard_lights_subscriber.PeekMessage().command;
 }
 
 }  // namespace ros2
