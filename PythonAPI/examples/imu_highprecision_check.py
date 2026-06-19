@@ -81,8 +81,11 @@ def main():
     turn_rms = rms([g for g, _ in turning])
     pos = sum(1 for g, w in turning if g * w > 0)
     sign_consistency = max(pos, len(turning) - pos) / len(turning)
+    # Rough publish rate over the measured (straight+turn) window.
+    measured_secs = args.straight + args.turn
+    rate_hz = (len(straight) + len(turning)) / measured_secs if measured_secs > 0 else 0.0
     print(f"straight_rms(gyro.z)={straight_rms:.4f} turn_rms(gyro.z)={turn_rms:.4f} "
-          f"sign_consistency={sign_consistency:.2f}")
+          f"sign_consistency={sign_consistency:.2f} approx_rate_hz={rate_hz:.1f}")
 
     # Fixed IMU: gyro.z clearly moves while turning, driven by the turn, and is
     # consistently sign-correlated. Old IMU: turn_rms ~ straight_rms ~ 0.

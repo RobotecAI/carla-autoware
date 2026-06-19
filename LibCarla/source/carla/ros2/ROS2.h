@@ -149,6 +149,15 @@ class ROS2
       carla::geom::Vector3D gyroscope,
       float compass,
       void *actor = nullptr);
+  void ProcessDataFromIMUStamped(
+      double time_offset_seconds,
+      uint64_t sensor_type,
+      carla::streaming::detail::stream_id_type stream_id,
+      const carla::geom::Transform sensor_transform,
+      carla::geom::Vector3D accelerometer,
+      carla::geom::Vector3D gyroscope,
+      float compass,
+      void *actor = nullptr);
   void ProcessDataFromDVS(
       uint64_t sensor_type,
       carla::streaming::detail::stream_id_type stream_id,

@@ -960,6 +960,34 @@ void ROS2::ProcessDataFromIMU(
   }
 }
 
+void ROS2::ProcessDataFromIMUStamped(
+    double time_offset_seconds,
+    uint64_t sensor_type,
+    carla::streaming::detail::stream_id_type stream_id,
+    const carla::geom::Transform sensor_transform,
+    carla::geom::Vector3D accelerometer,
+    carla::geom::Vector3D gyroscope,
+    float compass,
+    void *actor) {
+  // Per-substep stamp = current frame stamp minus the sample's offset from frame end.
+  double base = static_cast<double>(_seconds) + 1e-9 * static_cast<double>(_nanoseconds);
+  double t = base - time_offset_seconds;
+  if (t < 0.0) t = 0.0;
+  int32_t sec = static_cast<int32_t>(t);
+  uint32_t nsec = static_cast<uint32_t>((t - static_cast<double>(sec)) * 1e9);
+  auto sensors = GetOrCreateSensor(ESensors::InertialMeasurementUnit, stream_id, actor);
+  if (sensors.first) {
+    std::shared_ptr<CarlaIMUPublisher> publisher = std::dynamic_pointer_cast<CarlaIMUPublisher>(sensors.first);
+    publisher->SetData(sec, nsec, reinterpret_cast<float*>(&accelerometer), reinterpret_cast<float*>(&gyroscope), compass);
+    publisher->Publish();
+  }
+  if (sensors.second && _publish_tf) {
+    std::shared_ptr<CarlaTransformPublisher> publisher = std::dynamic_pointer_cast<CarlaTransformPublisher>(sensors.second);
+    publisher->SetData(sec, nsec, (const float*)&sensor_transform.location, (const float*)&sensor_transform.rotation);
+    publisher->Publish();
+  }
+}
+
 void ROS2::ProcessDataFromDVS(
     uint64_t sensor_type,
     carla::streaming::detail::stream_id_type stream_id,
