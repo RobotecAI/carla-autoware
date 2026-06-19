@@ -516,10 +516,15 @@ def verify_model(world, model_name):
         # - enable_hesai_udp_sequence: Nebula's PacketQT64 struct ends with
         #   a mandatory uint32_t udp_sequence field, so the trailing 4 bytes
         #   must be present even though AWSIM does not force this flag.
-        # - ensure_hesai_pandar_driver_compat: Nebula was derived from the
-        #   official Hesai Pandar ROS driver and inherits the same packet-
-        #   layout quirks that flag patches in, so enable it to keep the
-        #   wire format strictly Hesai-driver-compatible.
+        # - ensure_hesai_pandar_driver_compat: Nebula is descended from the
+        #   official Hesai Pandar ROS driver (TIER IV fork) and inherits the
+        #   driver's accumulated packet-layout adjustments — most visibly
+        #   the per-channel azimuth offsets that compensate for how PandarQT
+        #   reports angles relative to the laser firing order rather than
+        #   the geometric centre. AWSIM's RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER
+        #   patch reproduces those same adjustments in the emitted packets,
+        #   so the flag is required to feed Nebula geometrically-correct
+        #   points; without it the decoded cloud would be azimuth-rotated.
         if model_name == "HesaiPandarQT":
             udp_kwargs["enable_hesai_udp_sequence"] = True
             udp_kwargs["ensure_hesai_pandar_driver_compat"] = True
