@@ -772,6 +772,11 @@ void ACarlaWheeledVehicle::ApplyVehicleAccelerationControl(float LongitudinalAcc
   ActivateAccelerationControl(AccelerationCmps2);
 
   InputControl.Control.Steer = Steer;
+  // Steering is tracked by DesiredSteer (see FlushVehicleControl, which derives the
+  // applied steer from DesiredSteer and overwrites ControlToApply.Steer with it).
+  // The acceleration-control path must update it too, otherwise the Autoware steer
+  // command is dropped and the vehicle drives straight (no turn).
+  DesiredSteer = Steer;
   InputControl.Priority = EVehicleInputPriority::User;
 }
 
