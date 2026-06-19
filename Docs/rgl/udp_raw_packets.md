@@ -19,27 +19,31 @@ CARLA RGL LiDAR センサーから、実 Velodyne / Hesai 製品と同じワイ�
 
 ## 前提条件: UDP 拡張入り RGL のビルド
 
-`RobotecAI/RGL-extension-udp` (private リポジトリ) へのアクセス権が必要です。
+UDP 拡張は private リポジトリ `RobotecAI/RGL-extension-udp` で配布されており、
+clone するために SSH key (`git@github.com:` への読取権) が必要です。
+
+CARLA RGL のセットアップスクリプト `RglSetup.sh` には UDP 拡張用のフラグ
+`--with-udp` が用意されており、`prepare` ステップで指定すると `extensions.repos`
+に従って自動的に clone・ビルドします (weather 拡張の `--with-weather` と同じ仕組み)。
 
 ```bash
-cd /path/to/RobotecGPULidar/extensions
-git clone git@github.com:RobotecAI/RGL-extension-udp.git udp
-# extensions.repos に従ったバージョンを checkout
-cd udp
-git checkout $(git -C .. show HEAD:extensions.repos | \
-               sed -n '/extensions\/udp:/,/version:/{s/.*version: //p}')
-
-# RGL を UDP 拡張入りで再ビルド (CarlaUE5/RglSetup.sh の prepare ステップで
-# -DRGL_BUILD_UDP_EXTENSION=ON を渡す)
 cd /path/to/CarlaUE5
-bash RglSetup.sh prepare -DRGL_BUILD_UDP_EXTENSION=ON
+
+# 通常の prepare 引数 (--optix-dir 等) に --with-udp を足すだけ
+bash RglSetup.sh prepare --optix-dir=/path/to/optix --with-udp
+
+# 標準の CARLA セットアップ
+bash CarlaSetup.sh -i
+
+# UDP 拡張を含む RGL リンク済みで本体ビルド
 bash RglSetup.sh build
 ```
 
-UDP 拡張なしでも CARLA 本体はビルド可能 (UDP 関連の機能はランタイムで自動無効化、
-警告ログのみ)。`libRobotecGPULidar.so` の UDP 拡張有無は、シミュレーション起動時に
+UDP 拡張なしでも CARLA 本体はビルド可能です — その場合 UDP 関連の機能はランタイムで
+自動無効化され、警告ログのみ出力されます。`libRobotecGPULidar.so` の UDP 拡張有無は
+シミュレーション起動時に以下のログが出るかどうかで判別できます:
+
 `RGLBackendImpl: UDP publishing requested but RGL_EXTENSION_UDP not present ...`
-というログが出るかどうかで判別できます。
 
 ## Python 使用例
 
