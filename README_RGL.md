@@ -280,13 +280,15 @@ not yet implemented.
 - [RobotecGPULidar](https://github.com/RobotecAI/RobotecGPULidar) — upstream
   RGL repository.
 
-## UDP Raw Packet 拡張 (オプション)
+## UDP Raw Packet extension (optional)
 
-AWSIM 互換の UDP Raw Packet 送出機能を有効化するには、private リポジトリ
-`RobotecAI/RGL-extension-udp` を `RobotecGPULidar/extensions/udp/` に clone し、
-`RGL_BUILD_UDP_EXTENSION=ON` で RGL を再ビルドします。詳細手順と Python 使用例は
-[`Docs/rgl/udp_raw_packets.md`](Docs/rgl/udp_raw_packets.md) を参照してください。
+To enable AWSIM-compatible UDP Raw Packet emission, build RGL with the
+private `RobotecAI/RGL-extension-udp` extension. `RglSetup.sh` exposes
+a `--with-udp` flag for this; see
+[`Docs/rgl/udp_raw_packets.md`](Docs/rgl/udp_raw_packets.md) for the
+full procedure, Python recipes, attribute reference, and the per-model
+return-mode whitelist.
 
-UDP 拡張なしでも CARLA 本体はそのままビルド可能で、UDP 関連機能はランタイムで
-自動的に無効化され (警告ログのみ出力)、他の RGL 機能 (ROS2 publish、Yield) は
-影響を受けません。
+CARLA itself still builds without the UDP extension. In that case the
+UDP-related features auto-disable at runtime with a warning log and the
+rest of the RGL pipeline (ROS 2 publish, Yield) is unaffected.
