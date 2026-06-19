@@ -100,13 +100,18 @@ the CARLA side via `apply_preset(..., udp_publish=...)`:
 - `enable_hesai_udp_sequence=True` — Nebula's `PacketQT64` struct ends
   with a mandatory `uint32_t udp_sequence` field, so the trailing 4 bytes
   must be present even though AWSIM does not force this flag for QT64.
-- `ensure_hesai_pandar_driver_compat=True` — Nebula descends from the
-  official Hesai Pandar ROS driver (TIER IV fork) and inherits the
-  driver's accumulated packet-layout adjustments. The most visible ones
-  are the **per-channel azimuth offsets** that compensate for how the
-  PandarQT reports angles relative to the laser firing order rather than
-  the geometric centre. The AWSIM patch
-  (`RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER`) reproduces those
+- `ensure_hesai_pandar_driver_compat=True` — Nebula is an independent
+  implementation, but it was deliberately built to be behaviour-
+  compatible with the official Hesai Pandar ROS driver. The background
+  is that TIER IV had been running production vehicles on the Hesai
+  driver and switched to Nebula mid-stream; the LiDAR pose calibrations
+  (extrinsics, mounting transforms) accumulated against the Hesai
+  driver had to keep working unchanged, so Nebula matches the driver's
+  interpretation of the wire format. The most visible such adjustment
+  is the **per-channel azimuth offset** that compensates for how the
+  PandarQT reports angles relative to the laser firing order rather
+  than the geometric centre. The AWSIM patch
+  (`RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER`) reproduces those same
   adjustments on the emitted packets, so this flag is required for
   Nebula to output geometrically-correct points; without it the cloud
   parses but is azimuth-rotated.
