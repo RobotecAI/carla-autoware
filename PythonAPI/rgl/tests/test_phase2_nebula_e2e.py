@@ -366,8 +366,168 @@ def validate_pointclouds(model_name, msgs):
     return {"passed": passed, "indicators": indicators, "detail": detail}
 
 
+# ----------------------------------------------------------------------------
+# Per-model verification cycle
+# ----------------------------------------------------------------------------
+
+def verify_model(world, model_name):
+    """Run the full Nebula <- CARLA UDP cycle for one model and return the
+    validation result dict."""
+    import carla  # noqa: F401  (used via world parameter; ensure module loaded)
+    from lidar_models import apply_preset
+    import rclpy
+    from rclpy.qos import qos_profile_sensor_data as SENSOR_DATA
+    from sensor_msgs.msg import PointCloud2
+
+    vendor = "velodyne" if model_name.startswith("Velodyne") else "hesai"
+    carla_mode, nebula_mode = RETURN_MODE_FOR_PHASE2[model_name]
+    udp_port = DEST_PORT_BASE + ALL_MODELS.index(model_name)
+
+    # 1. Launch Nebula
+    nebula_proc = subprocess.Popen(
+        [
+            "ros2", "launch", "nebula_ros",
+            f"{vendor}_launch_all_hw.xml",
+            f"sensor_model:={NEBULA_MODEL[model_name]}",
+            "launch_hw:=false",
+            f"return_mode:={nebula_mode}",
+            f"host_ip:={DEST_IP}",
+            f"data_port:={udp_port}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env=os.environ.copy(),
+    )
+
+    node = rclpy.create_node(f"phase2_test_{model_name.lower()}")
+    sensor = None
+    sync_active = False
+
+    try:
+        # 2. Wait for the Nebula PointCloud2 topic to appear
+        try:
+            topic_name = find_aw_points_topic(node, max_wait=15.0)
+        except RuntimeError as e:
+            stderr = nebula_proc.stderr.read().decode(
+                errors="replace") if nebula_proc.stderr else ""
+            return {
+                "passed": False,
+                "detail": f"Nebula topic timeout: {e}",
+                "nebula_stderr": stderr[-500:],
+            }
+
+        msgs = []
+        node.create_subscription(
+            PointCloud2, topic_name,
+            lambda m: msgs.append(m), qos_profile=SENSOR_DATA)
+
+        # 3. Spawn the CARLA LiDAR
+        bp = world.get_blueprint_library().find("sensor.lidar.rgl")
+        apply_preset(
+            bp, model_name,
+            udp_publish={"dest_ip": DEST_IP, "dest_port": udp_port})
+        bp.set_attribute("return_mode", carla_mode)
+        spawn_point = world.get_map().get_spawn_points()[0]
+        sensor = world.spawn_actor(bp, spawn_point)
+
+        # 4. Tick CARLA + spin rclpy until we have 5 messages or 10 s elapsed
+        setup_sync(world)
+        sync_active = True
+        deadline = time.time() + 10.0
+        while len(msgs) < 5 and time.time() < deadline:
+            world.tick()
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+        # 5. Validate
+        return validate_pointclouds(model_name, msgs)
+    finally:
+        # 6. Cleanup
+        if sensor is not None:
+            try:
+                sensor.destroy()
+            except Exception:
+                pass
+        if sync_active:
+            try:
+                teardown_sync(world)
+            except Exception:
+                pass
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        try:
+            nebula_proc.send_signal(signal.SIGINT)
+            nebula_proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            nebula_proc.kill()
+            nebula_proc.wait(timeout=5)
+
+
 def main():
-    raise NotImplementedError("main implemented in later tasks")
+    rc = check_prereqs()
+    if rc != 0:
+        return rc
+
+    import rclpy
+    rclpy.init(args=None)
+
+    carla_log_path = Path("/tmp/carla_phase2.log")
+    carla_log = open(carla_log_path, "w")
+    print(f"Launching CARLA, log -> {carla_log_path}")
+    carla_proc = subprocess.Popen(
+        [str(CARLA_BIN), "-RenderOffScreen", "-nosound"],
+        stdout=carla_log,
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy(),
+    )
+
+    try:
+        if not wait_for_carla_rpc(CARLA_HOST, CARLA_RPC_PORT, timeout=60.0):
+            print("FAIL: CARLA server did not start within 60s")
+            return 1
+
+        import carla
+        client = carla.Client(CARLA_HOST, CARLA_RPC_PORT)
+        client.set_timeout(10.0)
+        world = client.get_world()
+
+        summary = {}
+        for model in ALL_MODELS:
+            print(f"\n=== {model} ===")
+            try:
+                summary[model] = verify_model(world, model)
+            except Exception as e:
+                summary[model] = {"passed": False, "detail": f"exception: {e}"}
+            res = summary[model]
+            marker = "PASS" if res.get("passed") else "FAIL"
+            print(f"  [{marker}] {res.get('detail', '')}")
+            if not res.get("passed") and "nebula_stderr" in res:
+                print(f"  nebula stderr (last 500B): {res['nebula_stderr']}")
+
+        passed = sum(1 for r in summary.values() if r.get("passed"))
+        print("\n" + "=" * 60)
+        print(f"Phase 2 results: {passed}/{len(ALL_MODELS)} models passed")
+        for model in ALL_MODELS:
+            res = summary[model]
+            marker = "PASS" if res.get("passed") else "FAIL"
+            print(f"  [{marker}] {model}: {res.get('detail', '')}")
+        return 0 if passed == len(ALL_MODELS) else 1
+    finally:
+        try:
+            carla_proc.send_signal(signal.SIGINT)
+            carla_proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            carla_proc.kill()
+            carla_proc.wait(timeout=10)
+        try:
+            carla_log.close()
+        except Exception:
+            pass
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
