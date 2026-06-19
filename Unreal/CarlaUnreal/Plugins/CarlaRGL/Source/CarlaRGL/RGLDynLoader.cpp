@@ -10,6 +10,7 @@
 
 // Include RGL headers for type definitions (rgl_status_t, rgl_node_t, rgl_mesh_t, etc.)
 #include <rgl/api/core.h>
+#include "RGLUdpExtensionShim.h"
 #include <rgl/api/extensions/ros2.h>
 
 // ---------------------------------------------------------------------------
