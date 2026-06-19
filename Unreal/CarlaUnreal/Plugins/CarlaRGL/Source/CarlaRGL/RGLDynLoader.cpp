@@ -145,6 +145,16 @@ typedef rgl_status_t (*fn_rgl_node_raytrace_configure_return_mode_t)(
     rgl_node_t, rgl_return_mode_t);
 static fn_rgl_node_raytrace_configure_return_mode_t fn_rgl_node_raytrace_configure_return_mode = nullptr;
 
+// 29. rgl_node_points_udp_publish (UDP extension)
+typedef rgl_status_t (*fn_rgl_node_points_udp_publish_t)(
+    rgl_node_t*, rgl_lidar_model_t, rgl_udp_options_t,
+    const char*, const char*, int32_t);
+static fn_rgl_node_points_udp_publish_t fn_rgl_node_points_udp_publish = nullptr;
+
+// 30. rgl_get_extension_info (always available)
+typedef rgl_status_t (*fn_rgl_get_extension_info_t)(rgl_extension_t, int32_t*);
+static fn_rgl_get_extension_info_t fn_rgl_get_extension_info = nullptr;
+
 // ---------------------------------------------------------------------------
 // Wrapper function definitions
 // These provide the symbols the linker resolves to, replacing the .so linkage.
@@ -372,6 +382,27 @@ rgl_status_t rgl_node_raytrace_configure_return_mode(
     return fn_rgl_node_raytrace_configure_return_mode(node, return_mode);
 }
 
+// 29. rgl_node_points_udp_publish
+rgl_status_t rgl_node_points_udp_publish(
+    rgl_node_t* node, rgl_lidar_model_t lidar_model, rgl_udp_options_t udp_options,
+    const char* device_ip, const char* dest_ip, int32_t dest_port)
+{
+    if (!fn_rgl_node_points_udp_publish) return RGL_INVALID_STATE;
+    return fn_rgl_node_points_udp_publish(
+        node, lidar_model, udp_options, device_ip, dest_ip, dest_port);
+}
+
+// 30. rgl_get_extension_info
+rgl_status_t rgl_get_extension_info(rgl_extension_t extension, int32_t* out_available)
+{
+    if (!fn_rgl_get_extension_info)
+    {
+        if (out_available) *out_available = 0;
+        return RGL_INVALID_STATE;
+    }
+    return fn_rgl_get_extension_info(extension, out_available);
+}
+
 // ---------------------------------------------------------------------------
 // RGLDynLoader implementation
 // ---------------------------------------------------------------------------
@@ -425,6 +456,8 @@ bool RGLDynLoader::Load(const char* LibPath)
     LOAD_FN(rgl_node_gaussian_noise_distance)
     LOAD_FN(rgl_node_raytrace_configure_beam_divergence)
     LOAD_FN(rgl_node_raytrace_configure_return_mode)
+    LOAD_FN(rgl_node_points_udp_publish)
+    LOAD_FN(rgl_get_extension_info)
 
     if (!allResolved)
     {
@@ -474,6 +507,8 @@ void RGLDynLoader::Unload()
     fn_rgl_node_gaussian_noise_distance = nullptr;
     fn_rgl_node_raytrace_configure_beam_divergence = nullptr;
     fn_rgl_node_raytrace_configure_return_mode = nullptr;
+    fn_rgl_node_points_udp_publish = nullptr;
+    fn_rgl_get_extension_info = nullptr;
 }
 
 bool RGLDynLoader::IsLoaded()
