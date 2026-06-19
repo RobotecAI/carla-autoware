@@ -424,6 +424,9 @@ def _nebula_config_for_model(model_name, data_port, nebula_return_mode):
     # launch_hw is propagated separately via the launch xml; we set true to
     # ensure the UDP listener is created.
     params["launch_hw"] = True
+    # Cap Nebula's max_range to the test threshold so the distance_in_range
+    # indicator does not fail on legitimate-but-distant points.
+    params["max_range"] = float(EXPECTED[model_name]["max_range_m"])
 
     out_path = Path(f"/tmp/phase2_{model_name.lower()}.yaml")
     with open(out_path, "w") as f:
@@ -508,9 +511,14 @@ def verify_model(world, model_name):
 
         # 3. Spawn the CARLA LiDAR
         bp = world.get_blueprint_library().find("sensor.lidar.rgl")
-        apply_preset(
-            bp, model_name,
-            udp_publish={"dest_ip": DEST_IP, "dest_port": udp_port})
+        udp_kwargs = {"dest_ip": DEST_IP, "dest_port": udp_port}
+        # HesaiPandarQT (PandarQT64): Nebula's Hesai driver expects the
+        # Pandar-ROS-driver-compatible packet variant; CARLA's RGL UDP
+        # extension emits the canonical Hesai layout by default, which
+        # Nebula rejects. Phase 1 added this opt-in flag for exactly this.
+        if model_name == "HesaiPandarQT":
+            udp_kwargs["ensure_hesai_pandar_driver_compat"] = True
+        apply_preset(bp, model_name, udp_publish=udp_kwargs)
         bp.set_attribute("return_mode", carla_mode)
         spawn_point = world.get_map().get_spawn_points()[0]
         sensor = world.spawn_actor(bp, spawn_point)
