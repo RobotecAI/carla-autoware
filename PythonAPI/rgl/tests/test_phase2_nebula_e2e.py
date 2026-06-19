@@ -231,6 +231,138 @@ def check_prereqs():
     return 0
 
 
+# ----------------------------------------------------------------------------
+# PointCloud2 decoding + validation
+# ----------------------------------------------------------------------------
+
+# Mapping from sensor_msgs/PointField datatype id to (struct format, size).
+_PC2_TYPE = {
+    1: ("<b", 1),  # INT8
+    2: ("<B", 1),  # UINT8
+    3: ("<h", 2),  # INT16
+    4: ("<H", 2),  # UINT16
+    5: ("<i", 4),  # INT32
+    6: ("<I", 4),  # UINT32
+    7: ("<f", 4),  # FLOAT32
+    8: ("<d", 8),  # FLOAT64
+}
+
+
+def _pc2_to_numpy(msg):
+    """Decode a sensor_msgs/PointCloud2 message into a dict containing
+    'xyz' (Nx3 float32), 'ring' (Nx1 int32), and 'intensity' (Nx1 float32).
+    Missing optional fields fall back to zero arrays."""
+    import numpy as np
+
+    fields = {f.name: f for f in msg.fields}
+    if not {"x", "y", "z"}.issubset(fields):
+        raise RuntimeError(
+            "PointCloud2 message is missing required x/y/z fields"
+        )
+
+    point_step = msg.point_step
+    n = msg.width * msg.height
+    raw = bytes(msg.data)
+
+    xyz = np.zeros((n, 3), dtype=np.float32)
+    ring = np.zeros(n, dtype=np.int32)
+    intensity = np.zeros(n, dtype=np.float32)
+
+    x_off = fields["x"].offset
+    y_off = fields["y"].offset
+    z_off = fields["z"].offset
+
+    ring_field = fields.get("ring")
+    ring_off = ring_field.offset if ring_field else None
+    ring_fmt = _PC2_TYPE[ring_field.datatype][0] if ring_field else None
+
+    intensity_field = fields.get("intensity")
+    intensity_off = intensity_field.offset if intensity_field else None
+    intensity_fmt = _PC2_TYPE[intensity_field.datatype][0] \
+        if intensity_field else None
+
+    for i in range(n):
+        base = i * point_step
+        xyz[i, 0] = struct.unpack_from("<f", raw, base + x_off)[0]
+        xyz[i, 1] = struct.unpack_from("<f", raw, base + y_off)[0]
+        xyz[i, 2] = struct.unpack_from("<f", raw, base + z_off)[0]
+        if ring_off is not None:
+            ring[i] = struct.unpack_from(ring_fmt, raw, base + ring_off)[0]
+        if intensity_off is not None:
+            intensity[i] = struct.unpack_from(
+                intensity_fmt, raw, base + intensity_off)[0]
+
+    return {"xyz": xyz, "ring": ring, "intensity": intensity}
+
+
+def _fail(indicators, detail):
+    return {"passed": False, "indicators": indicators, "detail": detail}
+
+
+def validate_pointclouds(model_name, msgs):
+    """Apply the 5 Phase 2 indicators to a list of PointCloud2 messages.
+
+    Returns a dict with keys:
+      passed (bool), indicators (dict[str, bool]), detail (str).
+    """
+    import numpy as np
+
+    exp = EXPECTED[model_name]
+    indicators = {}
+
+    # Indicator 1: receipt count
+    indicators["received_5"] = len(msgs) >= 5
+    if not indicators["received_5"]:
+        return _fail(
+            indicators,
+            f"only {len(msgs)} PointCloud2 msgs received (need >=5)"
+        )
+
+    decoded = [_pc2_to_numpy(m) for m in msgs[:5]]
+
+    # Indicator 2: ring count
+    max_ring = max(
+        int(d["ring"].max()) for d in decoded if d["ring"].size
+    )
+    indicators["ring_count_exact"] = (max_ring + 1) == exp["rings"]
+    detail_ring = f"rings={max_ring + 1} (expected {exp['rings']})"
+
+    # Indicator 3: average points per scan
+    avg_pts = sum(d["xyz"].shape[0] for d in decoded) / len(decoded)
+    indicators["min_points_avg"] = avg_pts >= exp["min_pts_avg"]
+    detail_pts = f"avg_pts={avg_pts:.0f} (>={exp['min_pts_avg']})"
+
+    # Indicator 4: azimuth coverage (>=32 of 36 ten-degree bins in >=3 scans)
+    coverage_ok = 0
+    for d in decoded:
+        if d["xyz"].shape[0] == 0:
+            continue
+        az = np.degrees(np.arctan2(d["xyz"][:, 1], d["xyz"][:, 0])) % 360.0
+        bin_ids = np.unique((az // 10).astype(np.int32))
+        if bin_ids.size >= AZIMUTH_COVERAGE_MIN:
+            coverage_ok += 1
+    indicators["azimuth_full_circle"] = coverage_ok >= DIST_AZ_PASSING_SCANS
+    detail_az = f"az_coverage_ok={coverage_ok}/5 (need >={DIST_AZ_PASSING_SCANS})"
+
+    # Indicator 5: distance range
+    dist_within = 0
+    for d in decoded:
+        if d["xyz"].shape[0] == 0:
+            continue
+        ranges = np.linalg.norm(d["xyz"], axis=1)
+        if ranges.min() >= MIN_RANGE_M and ranges.max() <= exp["max_range_m"]:
+            dist_within += 1
+    indicators["distance_in_range"] = dist_within >= DIST_AZ_PASSING_SCANS
+    detail_dist = (
+        f"dist_in_[{MIN_RANGE_M},{exp['max_range_m']}]_m={dist_within}/5 "
+        f"(need >={DIST_AZ_PASSING_SCANS})"
+    )
+
+    passed = all(indicators.values())
+    detail = " | ".join([detail_ring, detail_pts, detail_az, detail_dist])
+    return {"passed": passed, "indicators": indicators, "detail": detail}
+
+
 def main():
     raise NotImplementedError("main implemented in later tasks")
 
