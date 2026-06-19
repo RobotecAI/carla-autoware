@@ -1038,6 +1038,12 @@ void UActorBlueprintFunctionLibrary::MakeLidarDefinition(
     ReturnMode.RecommendedValues = { TEXT("first") };
     ReturnMode.bRestrictToRecommended = false;
 
+    FActorVariation HorizontalStartAngle;
+    HorizontalStartAngle.Id = TEXT("horizontal_start_angle");
+    HorizontalStartAngle.Type = EActorAttributeType::Float;
+    HorizontalStartAngle.RecommendedValues = { TEXT("0.0") };
+    HorizontalStartAngle.bRestrictToRecommended = false;
+
     Definition.Variations.Append({
       Channels,
       Range,
@@ -1083,7 +1089,8 @@ void UActorBlueprintFunctionLibrary::MakeLidarDefinition(
       NoiseAngularAxis,
       BeamDivergenceH,
       BeamDivergenceV,
-      ReturnMode});
+      ReturnMode,
+      HorizontalStartAngle});
   }
   else {
     DEBUG_ASSERT(false);
@@ -1974,6 +1981,9 @@ void UActorBlueprintFunctionLibrary::SetLidar(
   // Return mode
   Lidar.ReturnMode = RetrieveActorAttributeToString(
       "return_mode", Description.Variations, TEXT("first"));
+  // Horizontal sweep start angle (used by Hesai ROS driver compat preset)
+  Lidar.HorizontalStartAngle =
+      RetrieveActorAttributeToFloat("horizontal_start_angle", Description.Variations, 0.0f);
 }
 
 void UActorBlueprintFunctionLibrary::SetGnss(

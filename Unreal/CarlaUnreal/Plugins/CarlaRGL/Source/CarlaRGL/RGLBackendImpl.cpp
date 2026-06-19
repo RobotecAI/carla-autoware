@@ -597,12 +597,23 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
         const int32 ChRingId = (ch < static_cast<uint32>(Desc.RingIds.Num()))
             ? Desc.RingIds[ch] : static_cast<int32>(ch);
 
+        // Compute sweep window offset. When HorizontalStartAngle is non-zero,
+        // shift the centred [-HFOV/2, +HFOV/2] sweep so that it spans
+        // [HorizontalStartAngle, HorizontalStartAngle + HFOV] instead.
+        const float SweepCenterOffset =
+            (Desc.HorizontalStartAngle != 0.0f)
+                ? (Desc.HorizontalStartAngle + Desc.HorizontalFov / 2.0f)
+                : 0.0f;
+
         for (uint32 pt = 0; pt < PointsToScanWithOneLaser; ++pt)
         {
-            // Center angle range around 0 (same as CPU ray_cast: -HorizontalFov/2 offset)
-            const float HorizAngle = std::fmod(
-                InOutHorizontalAngle + static_cast<float>(pt) * AngleDistanceOfLaserMeasure,
-                Desc.HorizontalFov) - Desc.HorizontalFov / 2.0f + ChHorizOffset + ChStepOffset;
+            const float HorizAngle =
+                std::fmod(
+                    InOutHorizontalAngle + static_cast<float>(pt) * AngleDistanceOfLaserMeasure,
+                    Desc.HorizontalFov)
+                - Desc.HorizontalFov / 2.0f
+                + SweepCenterOffset
+                + ChHorizOffset + ChStepOffset;
 
             Session->RayTransforms[RayIndex] = RGLCoord::FromPitchYaw(
                 ChVertAngle,

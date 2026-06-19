@@ -43,6 +43,13 @@ struct CARLA_API FLidarDescription
   UPROPERTY(EditAnywhere)
   float HorizontalFov = 360.0f;
 
+  /// Horizontal sweep start angle (degrees). Default 0 means symmetric sweep
+  /// centred around the forward axis (-HFOV/2 .. +HFOV/2). Non-zero shifts
+  /// the entire sweep window (e.g. -90 with HFOV=360 → sweep -90..+270 for
+  /// Hesai ROS driver coordinate compatibility).
+  UPROPERTY(EditAnywhere)
+  float HorizontalStartAngle = 0.0f;
+
   /// Attenuation Rate in the atmosphere in m^-1.
   UPROPERTY(EditAnywhere)
   float AtmospAttenRate = 0.004f;
