@@ -585,6 +585,14 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
         FMemory::Memset(Session->RayMask.GetData(), 1, TotalRays);
     }
 
+    // Compute sweep window offset. When HorizontalStartAngle is non-zero,
+    // shift the centred [-HFOV/2, +HFOV/2] sweep so that it spans
+    // [HorizontalStartAngle, HorizontalStartAngle + HFOV] instead.
+    const float SweepCenterOffset =
+        (Desc.HorizontalStartAngle != 0.0f)
+            ? (Desc.HorizontalStartAngle + Desc.HorizontalFov / 2.0f)
+            : 0.0f;
+
     int32 RayIndex = 0;
     for (uint32 ch = 0; ch < ChannelCount; ++ch)
     {
@@ -596,14 +604,6 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
             ? Desc.HorizontalStepOffsets[ch] : 0.0f;
         const int32 ChRingId = (ch < static_cast<uint32>(Desc.RingIds.Num()))
             ? Desc.RingIds[ch] : static_cast<int32>(ch);
-
-        // Compute sweep window offset. When HorizontalStartAngle is non-zero,
-        // shift the centred [-HFOV/2, +HFOV/2] sweep so that it spans
-        // [HorizontalStartAngle, HorizontalStartAngle + HFOV] instead.
-        const float SweepCenterOffset =
-            (Desc.HorizontalStartAngle != 0.0f)
-                ? (Desc.HorizontalStartAngle + Desc.HorizontalFov / 2.0f)
-                : 0.0f;
 
         for (uint32 pt = 0; pt < PointsToScanWithOneLaser; ++pt)
         {
