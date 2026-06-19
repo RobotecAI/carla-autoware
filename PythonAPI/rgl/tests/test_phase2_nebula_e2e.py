@@ -512,14 +512,17 @@ def verify_model(world, model_name):
         # 3. Spawn the CARLA LiDAR
         bp = world.get_blueprint_library().find("sensor.lidar.rgl")
         udp_kwargs = {"dest_ip": DEST_IP, "dest_port": udp_port}
-        # HesaiPandarQT (PandarQT64): Nebula's PacketQT64 struct
-        # mandatorily includes a trailing uint32_t udp_sequence field, so
-        # enable_hesai_udp_sequence must be True even though AWSIM does
-        # not force it for this model. (ensure_hesai_pandar_driver_compat
-        # is for the official Hesai Pandar ROS driver — Nebula uses its
-        # own Hesai-manual-based decoder, so do NOT enable that flag.)
+        # HesaiPandarQT (PandarQT64):
+        # - enable_hesai_udp_sequence: Nebula's PacketQT64 struct ends with
+        #   a mandatory uint32_t udp_sequence field, so the trailing 4 bytes
+        #   must be present even though AWSIM does not force this flag.
+        # - ensure_hesai_pandar_driver_compat: Nebula was derived from the
+        #   official Hesai Pandar ROS driver and inherits the same packet-
+        #   layout quirks that flag patches in, so enable it to keep the
+        #   wire format strictly Hesai-driver-compatible.
         if model_name == "HesaiPandarQT":
             udp_kwargs["enable_hesai_udp_sequence"] = True
+            udp_kwargs["ensure_hesai_pandar_driver_compat"] = True
         apply_preset(bp, model_name, udp_publish=udp_kwargs)
         bp.set_attribute("return_mode", carla_mode)
         spawn_point = world.get_map().get_spawn_points()[0]
