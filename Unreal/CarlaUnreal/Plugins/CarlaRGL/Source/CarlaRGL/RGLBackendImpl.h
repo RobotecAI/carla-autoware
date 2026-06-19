@@ -68,7 +68,10 @@ struct FRGLSession
     {
         return UseRaysNode && SetRangeNode && RaysTransformNode && RaytraceNode &&
                CompactNode && ToSensorNode && YieldNode;
-        // FormatNode and Ros2PublishNode are optional (only when ROS2 topic is set)
+        // Optional nodes (not validated here):
+        //   FormatNode, Ros2PublishNode (only when ROS2 topic is set)
+        //   UdpPublishNode               (only when UDP is enabled and the
+        //                                 RGL UDP extension is present)
     }
 };
 
