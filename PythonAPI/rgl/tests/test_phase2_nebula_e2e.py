@@ -408,12 +408,27 @@ def verify_model(world, model_name):
         try:
             topic_name = find_aw_points_topic(node, max_wait=15.0)
         except RuntimeError as e:
-            stderr = nebula_proc.stderr.read().decode(
-                errors="replace") if nebula_proc.stderr else ""
+            # Trigger Nebula shutdown first so its stderr reaches EOF, then
+            # drain via communicate() to avoid blocking on a still-running
+            # process whose PIPE buffer might be near-full.
+            stderr_text = ""
+            try:
+                nebula_proc.send_signal(signal.SIGINT)
+                _, stderr_bytes = nebula_proc.communicate(timeout=5)
+                stderr_text = stderr_bytes.decode(errors="replace") \
+                    if stderr_bytes else ""
+            except subprocess.TimeoutExpired:
+                nebula_proc.kill()
+                try:
+                    _, stderr_bytes = nebula_proc.communicate(timeout=2)
+                    stderr_text = stderr_bytes.decode(errors="replace") \
+                        if stderr_bytes else ""
+                except subprocess.TimeoutExpired:
+                    pass
             return {
                 "passed": False,
                 "detail": f"Nebula topic timeout: {e}",
-                "nebula_stderr": stderr[-500:],
+                "nebula_stderr": stderr_text[-500:],
             }
 
         msgs = []
