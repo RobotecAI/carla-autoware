@@ -91,6 +91,7 @@ static const TMap<FString, rgl_lidar_model_t> GLidarModelMap = {
     {TEXT("HesaiPandarXT32"),   RGL_HESAI_PANDAR_XT32},
     {TEXT("HesaiQT128C2X"),     RGL_HESAI_QT128C2X},
     {TEXT("HesaiPandar128E4X"), RGL_HESAI_PANDAR_128E4X},
+    {TEXT("HesaiPandar128E4XHighRes"), RGL_HESAI_PANDAR_128E4X},
 };
 
 // Return mode whitelist per LiDAR model. Names match the strings accepted
@@ -113,6 +114,9 @@ static bool IsReturnModeSupportedForModel(const FString& Model, const FString& M
           TEXT("last_strongest"), TEXT("first_last"), TEXT("first_strongest"),
           TEXT("strongest_second_strongest"), TEXT("first_second")}},
         {TEXT("HesaiPandar128E4X"),
+         {TEXT("first"), TEXT("strongest"), TEXT("last"),
+          TEXT("last_strongest"), TEXT("first_last"), TEXT("first_strongest")}},
+        {TEXT("HesaiPandar128E4XHighRes"),
          {TEXT("first"), TEXT("strongest"), TEXT("last"),
           TEXT("last_strongest"), TEXT("first_last"), TEXT("first_strongest")}},
         {TEXT("HesaiPandarXT32"),
@@ -369,6 +373,7 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
                 const FString& M = Desc.RglLidarModelName;
                 if (M == TEXT("HesaiQT128C2X")
                     || M == TEXT("HesaiPandar128E4X")
+                    || M == TEXT("HesaiPandar128E4XHighRes")
                     || M == TEXT("HesaiPandarXT32"))
                 {
                     if (!EffEnableSeq)
@@ -391,6 +396,19 @@ FRGLSessionHandle FRGLBackendImpl::CreateSession(const FRGLSessionConfig& Config
                 if (EffEnableSeq)      UdpOptions |= RGL_UDP_ENABLE_HESAI_UDP_SEQUENCE;
                 if (EffBlockage)       UdpOptions |= RGL_UDP_UP_CLOSE_BLOCKAGE_DETECTION;
                 if (EffPandarDrvActive) UdpOptions |= RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER;
+
+                // HesaiPandar128E4XHighRes is the same physical sensor as
+                // HesaiPandar128E4X but emits a two-firing-sequence packet that
+                // doubles azimuth density (0.2 -> 0.1 deg). AWSIM's
+                // LidarUdpPublisher sets this flag purely from the model, so we
+                // mirror that — no user-facing attribute is involved.
+                if (M == TEXT("HesaiPandar128E4XHighRes"))
+                {
+                    UdpOptions |= RGL_UDP_HIGH_RESOLUTION_MODE;
+                    UE_LOG(LogTemp, Log,
+                        TEXT("RGLBackendImpl: high-resolution mode enabled for '%s'"),
+                        *M);
+                }
 
                 const FString EffSrcIp = Desc.UdpSourceIp.IsEmpty()
                     ? TEXT("0.0.0.0") : Desc.UdpSourceIp;
