@@ -797,7 +797,14 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
             ? (Desc.HorizontalStartAngle + Desc.HorizontalFov / 2.0f)
             : 0.0f;
 
-    int32 RayIndex = 0;
+    // Ray array layout MUST be azimuth-major: all channels of one horizontal
+    // step are contiguous, then the step advances. This matches AWSIM
+    // RGLUnityPlugin (LidarConfiguration.GetRayPoses: idx = laser + hStep*numLasers)
+    // and the RGL UDP extension, which derives each packet point's azimuth+channel
+    // purely from the array index (firing sequence). The loop nests channel-inside
+    // but writes to RayIndex = pt*ChannelCount + ch so the stored layout is
+    // azimuth-major. The ROS2-direct path carries per-point azimuth and ring_id, so
+    // it is order-independent and unaffected by this layout.
     for (uint32 ch = 0; ch < ChannelCount; ++ch)
     {
         const float ChVertAngle = (ch < static_cast<uint32>(VerticalAngles.Num()))
@@ -811,6 +818,10 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
 
         for (uint32 pt = 0; pt < PointsToScanWithOneLaser; ++pt)
         {
+            // Azimuth-major position: horizontal step pt holds all channels contiguously.
+            const int32 RayIndex = static_cast<int32>(pt) * static_cast<int32>(ChannelCount)
+                                 + static_cast<int32>(ch);
+
             const float HorizAngle =
                 std::fmod(
                     InOutHorizontalAngle + static_cast<float>(pt) * AngleDistanceOfLaserMeasure,
@@ -863,8 +874,6 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
                     && Desc.RayMaskRaw[ch] == 0)
                     Mask = 0;
             }
-
-            ++RayIndex;
         }
     }
 
@@ -882,11 +891,13 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
         Session->RayRanges.SetNum(TotalRays);
         const int32 Period = Desc.RangePatternPeriod;
         const int32 MaxPatIdx = Desc.PerChannelMinRanges.Num() - 1;
-        int32 Idx = 0;
         for (uint32 ch = 0; ch < ChannelCount; ++ch)
         {
             for (uint32 pt = 0; pt < PointsToScanWithOneLaser; ++pt)
             {
+                // Azimuth-major layout — must match the ray-pattern loop above.
+                const int32 Idx = static_cast<int32>(pt) * static_cast<int32>(ChannelCount)
+                                + static_cast<int32>(ch);
                 const int32 PatIdx = FMath::Min(
                     static_cast<int32>(ch) * Period + static_cast<int32>(pt % Period),
                     MaxPatIdx);
@@ -894,7 +905,6 @@ int32 FRGLBackendImpl::GenerateRayPattern(FRGLSession* Session, float DeltaSecon
                     Desc.PerChannelMinRanges[PatIdx],
                     Desc.PerChannelMaxRanges[PatIdx]
                 }};
-                ++Idx;
             }
         }
     }
