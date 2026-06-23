@@ -47,9 +47,9 @@ typedef enum : uint32_t
 {
     RGL_UDP_NO_ADDITIONAL_OPTIONS           = 0,
     RGL_UDP_ENABLE_HESAI_UDP_SEQUENCE       = 1u << 0,
-    // RGL_UDP_HIGH_RESOLUTION_MODE is defined for AWSIM parity but is not
-    // wired up in Phase 1 (Pandar128E4X high-resolution mode is deferred to
-    // a follow-up spec; see plan section "Out of scope").
+    // RGL_UDP_HIGH_RESOLUTION_MODE doubles Pandar128E4X azimuth density
+    // (0.2 -> 0.1 deg) via a two-firing-sequence packet layout. Wired up for
+    // the HesaiPandar128E4XHighRes preset in RGLBackendImpl.cpp.
     RGL_UDP_HIGH_RESOLUTION_MODE            = 1u << 1,
     RGL_UDP_UP_CLOSE_BLOCKAGE_DETECTION     = 1u << 2,
     RGL_UDP_FIT_QT64_TO_HESAI_PANDAR_DRIVER = 1u << 3,

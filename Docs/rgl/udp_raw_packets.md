@@ -66,17 +66,20 @@ apply_preset(bp, "VelodyneVLP16",
 bp.set_attribute("return_mode", "strongest")
 
 # Example 2: Hesai Pandar40P with ROS 2 driver coordinate compat + UDP
+# hesai_ros_driver_compat defaults to None (auto-ON for Hesai), so the
+# -90 deg sweep start is applied automatically. The explicit True below is
+# equivalent and remains valid.
 apply_preset(bp, "HesaiPandar40P",
-             hesai_ros_driver_compat=True,
+             hesai_ros_driver_compat=True,  # redundant for Hesai (default is auto-ON)
              udp_publish={"dest_ip": "127.0.0.1",
                           "dest_port": 2368,
                           "ensure_hesai_pandar_driver_compat": True})
 bp.set_attribute("return_mode", "strongest")  # Pandar40P also rejects "first"
 
 # Example 3: Hesai QT128C2X (UDP sequence + blockage detection)
+# -90 deg sweep start is applied automatically (Hesai default).
 # QT128C2X accepts "first", so explicit return_mode is optional.
 apply_preset(bp, "HesaiQT128C2X",
-             hesai_ros_driver_compat=True,
              udp_publish={"dest_ip": "127.0.0.1",
                           "enable_hesai_udp_sequence": True,
                           "enable_hesai_blockage_detection": True})
@@ -112,7 +115,7 @@ rest of the LiDAR continues to operate normally.
 | Attribute | Type | Default | Description |
 |---|---|---|---|
 | `rgl_lidar_model_name` | string | `""` | Model name from the table above |
-| `horizontal_start_angle` | float | `0.0` | Sweep start angle (deg). Set to `-90.0` for Hesai ROS driver compat |
+| `horizontal_start_angle` | float | `0.0` | Sweep start angle (deg). For Hesai models, `apply_preset` now defaults to `-90.0` (Hesai ROS driver convention) instead of `0.0`. **Changed default:** this is a behavior change — existing code relying on `0.0` must pass `hesai_ros_driver_compat=False` to restore the old behavior. |
 | `rgl_udp_enabled` | bool | `false` | UDP publish toggle |
 | `rgl_udp_source_ip` | string | `"0.0.0.0"` | Source IP |
 | `rgl_udp_dest_ip` | string | `""` | Destination IP (empty disables UDP) |
@@ -159,6 +162,6 @@ HesaiPandarQT-specific UDP flag requirements.
 |---|---|
 | `UDP publishing requested but RGL_EXTENSION_UDP not present` warning | Confirm `libRobotecGPULidar.so` was built with the UDP extension (`nm -D` and grep for `rgl_node_points_udp_publish`) |
 | No packets received | If `rgl_udp_dest_ip` is not `127.0.0.1`, verify firewall and NIC binding on the receiver side |
-| Hesai azimuth looks shifted | Confirm `hesai_ros_driver_compat=True` was set, and that `ensure_hesai_pandar_driver_compat` is inside the `udp_publish` dict when applicable |
+| Hesai azimuth looks shifted | For Hesai models the -90 deg sweep start is applied by default. If you opted out with `hesai_ros_driver_compat=False`, remove that override. Also confirm `ensure_hesai_pandar_driver_compat` is inside the `udp_publish` dict when applicable. |
 | `Return mode '...' not supported by model '...'` warning | Use the return-mode whitelist above and set the attribute with `bp.set_attribute("return_mode", ...)` |
 | `UDP requires HorizontalFov=360.0 but is ...` warning | Set the LiDAR `HorizontalFov` to 360 (UDP raw packets assume a full rotation) |

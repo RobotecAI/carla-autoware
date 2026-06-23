@@ -54,7 +54,7 @@ CARLA_BIN = Path(
 ALL_MODELS = [
     "VelodyneVLP16", "VelodyneVLP32C", "VelodyneVLS128",
     "HesaiPandar40P", "HesaiPandarQT", "HesaiPandarXT32",
-    "HesaiQT128C2X", "HesaiPandar128E4X",
+    "HesaiQT128C2X", "HesaiPandar128E4X", "HesaiPandar128E4XHighRes",
 ]
 
 # (CARLA return_mode, Nebula return_mode) per model.
@@ -72,6 +72,7 @@ RETURN_MODE_FOR_PHASE2 = {
     "HesaiPandarXT32":   ("strongest", "Strongest"),
     "HesaiQT128C2X":     ("strongest", "Strongest"),
     "HesaiPandar128E4X": ("strongest", "Strongest"),
+    "HesaiPandar128E4XHighRes": ("strongest", "Strongest"),
 }
 
 # CARLA preset name -> Nebula sensor_model launch arg.
@@ -84,6 +85,7 @@ NEBULA_MODEL = {
     "HesaiPandarXT32":   "PandarXT32",
     "HesaiQT128C2X":     "PandarQT128",
     "HesaiPandar128E4X": "Pandar128E4X",
+    "HesaiPandar128E4XHighRes": "Pandar128E4X",
 }
 
 # Per-model expected values for validation.
@@ -96,6 +98,7 @@ EXPECTED = {
     "HesaiPandarXT32":   {"rings": 32,  "min_pts_avg": 1_000, "max_range_m": 200.0},
     "HesaiQT128C2X":     {"rings": 128, "min_pts_avg": 5_000, "max_range_m": 200.0},
     "HesaiPandar128E4X": {"rings": 128, "min_pts_avg": 5_000, "max_range_m": 200.0},
+    "HesaiPandar128E4XHighRes": {"rings": 128, "min_pts_avg": 5_000, "max_range_m": 200.0},
 }
 
 MIN_RANGE_M = 0.1

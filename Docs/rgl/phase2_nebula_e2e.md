@@ -116,6 +116,33 @@ the CARLA side via `apply_preset(..., udp_publish=...)`:
   Nebula to output geometrically-correct points; without it the cloud
   parses but is azimuth-rotated.
 
+## HesaiPandar128E4X high-resolution UDP mode
+
+Selecting the `HesaiPandar128E4XHighRes` preset automatically enables
+high-resolution UDP — no extra attribute or flag is needed:
+
+```python
+apply_preset(bp, "HesaiPandar128E4XHighRes", udp_publish={...})
+```
+
+High-res doubles azimuth density from 0.2 ° to 0.1 ° by emitting a
+two-firing-sequence packet layout. RGL sets the packet's
+`operational_state` field to `HIGH_RESOLUTION`.
+
+Nebula decodes it with **the same `sensor_model:=Pandar128E4X`** — no
+Nebula config change is required. Nebula auto-detects high-res mode
+from the packet's `operational_state` field.
+
+Verified result (Phase 2 E2E, same scene as standard Pandar128E4X):
+
+| indicator | standard Pandar128E4X | HighRes Pandar128E4X |
+|---|---|---|
+| rings | 128 | 128 |
+| avg points per scan | ~73 k | ~117 k (~1.6×) |
+
+The logical channel count (rings = 128) is unchanged; the extra density
+comes from the finer azimuth step.
+
 ## Troubleshooting
 
 | symptom | likely cause | what to try |
