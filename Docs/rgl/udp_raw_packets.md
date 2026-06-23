@@ -115,7 +115,7 @@ rest of the LiDAR continues to operate normally.
 | Attribute | Type | Default | Description |
 |---|---|---|---|
 | `rgl_lidar_model_name` | string | `""` | Model name from the table above |
-| `horizontal_start_angle` | float | `0.0` | Sweep start angle (deg). Automatically set to `-90.0` for Hesai models by `apply_preset` (Hesai ROS driver compat default). Pass `hesai_ros_driver_compat=False` to opt out. |
+| `horizontal_start_angle` | float | `0.0` | Sweep start angle (deg). For Hesai models, `apply_preset` now defaults to `-90.0` (Hesai ROS driver convention) instead of `0.0`. **Changed default:** this is a behavior change — existing code relying on `0.0` must pass `hesai_ros_driver_compat=False` to restore the old behavior. |
 | `rgl_udp_enabled` | bool | `false` | UDP publish toggle |
 | `rgl_udp_source_ip` | string | `"0.0.0.0"` | Source IP |
 | `rgl_udp_dest_ip` | string | `""` | Destination IP (empty disables UDP) |
