@@ -83,8 +83,28 @@ def test_explicit_true_non_hesai_warns():
     assert len(caught) == 1, (
         f"Expected exactly 1 warning, got {len(caught)}: "
         f"{[str(w.message) for w in caught]}")
-    assert "non-Hesai" in str(caught[0].message), (
-        f"Warning text should mention non-Hesai: {caught[0].message}")
+    assert "non-Hesai" in str(caught[0].message.args[0]), (
+        f"Warning text should mention non-Hesai: {caught[0].message.args[0]}")
+
+
+def test_explicit_true_hesai_sets_start_angle():
+    """explicit True + Hesai → horizontal_start_angle == '-90.0'."""
+    bp = FakeBlueprint()
+    apply_preset(bp, "HesaiPandar128E4X", hesai_ros_driver_compat=True)
+    assert bp.attrs.get("horizontal_start_angle") == "-90.0", (
+        f"Expected '-90.0', got {bp.attrs.get('horizontal_start_angle')!r}")
+
+
+def test_explicit_false_non_hesai_nothing():
+    """explicit False + non-Hesai → nothing (no attribute, no warning)."""
+    bp = FakeBlueprint()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        apply_preset(bp, "VelodyneVLP16", hesai_ros_driver_compat=False)
+    assert "horizontal_start_angle" not in bp.attrs, (
+        "horizontal_start_angle should NOT be set when compat=False")
+    assert len(caught) == 0, (
+        f"Expected 0 warnings, got {len(caught)}: {[str(w.message) for w in caught]}")
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +117,8 @@ def main():
         test_default_non_hesai_no_angle_no_warning,
         test_explicit_false_hesai_no_angle,
         test_explicit_true_non_hesai_warns,
+        test_explicit_true_hesai_sets_start_angle,
+        test_explicit_false_non_hesai_nothing,
     ]
     failures = []
     for fn in tests:
