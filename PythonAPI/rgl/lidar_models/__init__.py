@@ -147,7 +147,7 @@ def apply_preset(
     model_name,
     apply_noise=True,
     apply_beam_divergence=False,
-    hesai_ros_driver_compat=False,
+    hesai_ros_driver_compat=None,
     udp_publish=None,
 ):
     """Apply a LiDAR preset to a CARLA blueprint.
@@ -159,10 +159,15 @@ def apply_preset(
             Set to False for deterministic (noise-free) operation.
         apply_beam_divergence: if True, apply preset beam divergence params.
             Default False (58x ray cost when enabled).
-        hesai_ros_driver_compat: if True and model is Hesai, set the sweep
-            start angle to -90.0 so the LiDAR scan aligns with the Hesai ROS
-            driver azimuth convention (sweep -90..+270). For non-Hesai models
-            this argument is ignored with a warnings.warn().
+        hesai_ros_driver_compat: controls the Hesai ROS driver sweep-start
+            convention (horizontal_start_angle = -90.0).
+            None (default): auto — enabled for Hesai models, disabled for
+                non-Hesai models (no warning). This means Hesai models get
+                the -90 deg sweep start by default without any explicit opt-in.
+            True: force-enable. For Hesai models sets -90.0; for non-Hesai
+                models emits a warnings.warn() and does nothing else.
+            False: force-disable. Never sets horizontal_start_angle,
+                regardless of model. Use this to opt out on Hesai models.
         udp_publish: dict configuring AWSIM-style UDP Raw Packet publishing.
             None (default) disables UDP. When provided, supported keys:
               dest_ip                                  (str, required to enable)
@@ -186,8 +191,12 @@ def apply_preset(
         pass  # attribute not available in older builds
 
     # Hesai ROS driver coordinate compatibility (sets sweep start to -90 deg).
-    if hesai_ros_driver_compat:
-        is_hesai = model_name.startswith("Hesai")
+    is_hesai = model_name.startswith("Hesai")
+    # Auto-default: enabled for Hesai models by default (None), so the sweep
+    # start aligns with the Hesai ROS driver convention without the caller
+    # opting in. Explicit True/False override the auto-default.
+    effective_compat = is_hesai if hesai_ros_driver_compat is None else hesai_ros_driver_compat
+    if effective_compat:
         if is_hesai:
             try:
                 blueprint.set_attribute("horizontal_start_angle", "-90.0")
